@@ -34,8 +34,13 @@ describe("a tune's lineage", () => {
     expect(canPlay({ ...saltCreek(), earCheckedBy: "blu" })).toBe(false);
   });
 
-  it("refuses notes from The Session, whose license bars LLM processing", () => {
+  it("plays a tune a person fetched from The Session", () => {
     const tune = { ...saltCreek(), source: "https://thesession.org/tunes/1234" };
+    expect(canPlay(tune)).toBe(true);
+  });
+
+  it("refuses a tune from The Session that an emergent put in", () => {
+    const tune = { ...saltCreek(), source: "https://thesession.org/tunes/1234", notesBy: "blu" };
     expect(canPlay(tune)).toBe(false);
   });
 

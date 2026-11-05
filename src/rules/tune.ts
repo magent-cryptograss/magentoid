@@ -39,12 +39,14 @@ export const EMERGENTS: readonly string[] = ["magent", "re", "blu"];
 /**
  * Sources we can't take notes from, and why. Checked 2026-11-05 (block 26,345,721).
  * If one of these changes its terms, the reason here is where to start.
+ *
+ * The Session isn't here. Its license bars processing its tunes with an LLM,
+ * and nothing here does: a person fetches the ABC and runs Tunesmith
+ * (pickipedia/tools), an Artificial Dumb that converts it without reading it,
+ * and `notesBy` and `earCheckedBy` already refuse an emergent's name.
+ * Justin, #connectome, block 26,349,551.
  */
 export const REFUSED_SOURCES: readonly { readonly matches: readonly string[]; readonly why: string }[] = [
-  {
-    matches: ["thesession.org", "TheSession-data"],
-    why: "The Session's data license forbids processing its tunes with Large Language Models, and emergents build this game.",
-  },
   {
     // Specific names, not just "nottingham": a tune played in at a Nottingham jam is fine.
     matches: ["Nottingham Music Database", "abc.sourceforge.net/NMD", "nottingham-dataset"],
