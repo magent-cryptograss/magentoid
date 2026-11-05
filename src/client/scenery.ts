@@ -99,25 +99,59 @@ function hills(
   return scene.add.graphics().fillStyle(colour).fillPoints(points, true).setScrollFactor(scroll);
 }
 
-/** A path leading into the screen, to another road, with a sign saying where. */
-export function drawJunction(scene: Phaser.Scene, x: number, toName: string): Phaser.GameObjects.GameObject[] {
-  const path = scene.add
-    .graphics()
-    .fillStyle(0x000000, 0.35)
-    .fillPoints(
-      [
-        new Phaser.Math.Vector2(x - 50, GROUND_Y + 6),
-        new Phaser.Math.Vector2(x - 12, GROUND_Y - 110),
-        new Phaser.Math.Vector2(x + 12, GROUND_Y - 110),
-        new Phaser.Math.Vector2(x + 50, GROUND_Y + 6),
-      ],
-      true,
-    );
-  const post = scene.add.rectangle(x + 64, GROUND_Y - 30, 4, 60, 0x5a4632).setOrigin(0.5, 0);
-  const sign = scene.add
-    .text(x + 64, GROUND_Y - 44, `↑ ${toName}`, lettering(15, { color: MAGENTA, backgroundColor: "#1a1020", padding: { x: 6, y: 3 } }))
-    .setOrigin(0.5);
-  return [path, post, sign];
+/** Weathered wood, for signposts and gates. */
+const POST_WOOD = 0x5a4632;
+
+/**
+ * A path leading into the screen, to another road, with a sign saying where.
+ * A junction that starts closed has a gate across it until it opens.
+ */
+export class JunctionDrawing {
+  private readonly parts: Phaser.GameObjects.GameObject[];
+  private readonly gate: Phaser.GameObjects.Graphics;
+  private readonly sign: Phaser.GameObjects.Text;
+
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    private readonly toName: string,
+  ) {
+    const path = scene.add
+      .graphics()
+      .fillStyle(0x000000, 0.35)
+      .fillPoints(
+        [
+          new Phaser.Math.Vector2(x - 50, GROUND_Y + 6),
+          new Phaser.Math.Vector2(x - 12, GROUND_Y - 110),
+          new Phaser.Math.Vector2(x + 12, GROUND_Y - 110),
+          new Phaser.Math.Vector2(x + 50, GROUND_Y + 6),
+        ],
+        true,
+      );
+    // Two posts and two rails across the mouth of the path.
+    this.gate = scene.add
+      .graphics()
+      .fillStyle(POST_WOOD)
+      .fillRect(x - 48, GROUND_Y - 52, 6, 52)
+      .fillRect(x + 42, GROUND_Y - 52, 6, 52)
+      .fillRect(x - 52, GROUND_Y - 44, 104, 5)
+      .fillRect(x - 52, GROUND_Y - 24, 104, 5);
+    const post = scene.add.rectangle(x + 64, GROUND_Y - 30, 4, 60, POST_WOOD).setOrigin(0.5, 0);
+    this.sign = scene.add
+      .text(x + 64, GROUND_Y - 44, "", lettering(15, { color: MAGENTA, backgroundColor: "#1a1020", padding: { x: 6, y: 3 } }))
+      .setOrigin(0.5);
+    this.parts = [path, this.gate, post, this.sign];
+  }
+
+  /** Open: an arrow on the sign. Closed: the gate is across the path, and the sign is dim. */
+  show(open: boolean) {
+    this.gate.setVisible(!open);
+    this.sign.setText(open ? `↑ ${this.toName}` : this.toName).setAlpha(open ? 1 : 0.55);
+  }
+
+  destroy() {
+    for (const part of this.parts) part.destroy();
+  }
 }
 
 /**

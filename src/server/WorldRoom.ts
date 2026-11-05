@@ -1,7 +1,8 @@
 import { Room, type Client } from "colyseus";
 import { firstSlice } from "../rules/firstSlice";
-import { MOVES, isMended, playRound, startSession, type Move, type Session } from "../rules/session";
-import { junctionFrom, troubleAt, walk } from "../rules/world";
+import { MOVES, isMended, isNeedHeard, playRound, startSession, type Move, type Session } from "../rules/session";
+import { findTrouble, isOpen, junctionFrom, seatFor, troubleAt, walk, type Trouble } from "../rules/world";
+import { NEEDS } from "./needs";
 import { Mending, Player, WorldState } from "./state";
 
 const world = firstSlice;
@@ -37,7 +38,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   onCreate() {
     for (const trouble of world.troubles) {
       const mending = new Mending();
-      writeSession(mending, startSession(trouble.thing, trouble.need, trouble.discord, trouble.needsBand));
+      writeSession(mending, trouble, startSession(trouble));
       this.state.mendings.set(trouble.id, mending);
     }
 
@@ -53,16 +54,16 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.onMessage("step", (client) => {
       const player = this.playerOf(client);
       if (player.sittingWith) return;
-      const there = junctionFrom(world, { road: player.road, x: player.x });
-      if (!there) return;
-      player.road = there.road;
-      player.x = there.x;
+      const crossing = junctionFrom(world, { road: player.road, x: player.x });
+      if (!crossing || !isOpen(crossing, (id) => this.isMendedNow(id))) return;
+      player.road = crossing.leadsTo.road;
+      player.x = crossing.leadsTo.x;
     });
 
     this.onMessage("sitDown", (client) => {
       const player = this.playerOf(client);
       const trouble = troubleAt(world, { road: player.road, x: player.x });
-      if (!trouble || isMended(this.state.mendings.get(trouble.id)!)) return;
+      if (!trouble || this.isMendedNow(trouble.id)) return;
       player.walking = 0;
       player.sittingWith = trouble.id;
       player.move = "";
@@ -81,9 +82,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.onMessage("getUp", (client) => {
       const player = this.playerOf(client);
       const troubleId = player.sittingWith;
-      player.sittingWith = "";
-      player.move = "";
-      if (troubleId) this.checkRound(troubleId);
+      if (!troubleId) return;
+      this.standUp(player, findTrouble(world, troubleId), this.bandAt(troubleId));
+      this.checkRound(troubleId);
     });
   }
 
@@ -138,28 +139,48 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   /** Play the round with everyone who has chosen. Whoever hasn't sits this one out. */
   private finishRound(troubleId: string) {
+    const trouble = findTrouble(world, troubleId);
     const mending = this.state.mendings.get(troubleId)!;
     const band = this.bandAt(troubleId);
     mending.countdown = 0;
 
-    const moves: Record<string, Move> = {};
+    // Moves are kept by name. An object made with `{}` has names of its own that
+    // JavaScript treats specially: give it "__proto__" and nothing is stored, and
+    // a player who called themselves that would wait for their round forever.
+    // An object made from null has no names but the ones we put in it.
+    const moves: Record<string, Move> = Object.create(null);
     for (const player of band) if (isMove(player.move)) moves[player.name] = player.move;
     if (Object.keys(moves).length === 0) return;
 
-    const round = playRound(readSession(mending), moves);
-    writeSession(mending, round.session);
+    const round = playRound(readSession(mending, trouble), moves);
+    writeSession(mending, trouble, round.session);
     mending.story.clear();
     mending.story.push(...round.story);
 
     for (const player of band) {
-      player.move = "";
       // Once it's mended there's nothing left to sit with, so everyone stands up.
-      if (isMended(round.session)) player.sittingWith = "";
+      if (isMended(round.session)) this.standUp(player, trouble, band);
+      else player.move = "";
     }
+  }
+
+  /**
+   * Stand up from a trouble, right where you sat. The screen draws a sitting
+   * player in their seat, so standing anywhere else would make them jump, and
+   * a whole band standing at once would land on top of the thing and each other.
+   */
+  private standUp(player: Player, trouble: Trouble, band: Player[]) {
+    player.x = seatFor(world, trouble, band.map((p) => p.name), player.name);
+    player.sittingWith = "";
+    player.move = "";
   }
 
   private bandAt(troubleId: string): Player[] {
     return [...this.state.players.values()].filter((p) => p.sittingWith === troubleId);
+  }
+
+  private isMendedNow(troubleId: string): boolean {
+    return isMended(this.state.mendings.get(troubleId)!);
   }
 
   private playerOf(client: Client): Player {
@@ -190,23 +211,23 @@ function cleanName(value: unknown): string {
   return [...name].slice(0, 24).join("") || "wanderer";
 }
 
-function readSession(m: Mending): Session {
+/** The Session as the rules see it: the numbers from the state, and whether it needs a band from the world. */
+function readSession(mending: Mending, trouble: Trouble): Session {
   return {
-    thing: m.thing,
-    need: m.need,
-    discord: m.discord,
-    trust: m.trust,
-    needsBand: m.needsBand,
-    playedBy: [...m.playedBy],
+    discord: mending.discord,
+    trust: mending.trust,
+    needsBand: trouble.needsBand,
+    playedBy: [...mending.playedBy],
   };
 }
 
-function writeSession(m: Mending, s: Session) {
-  m.thing = s.thing;
-  m.need = s.need;
-  m.discord = s.discord;
-  m.trust = s.trust;
-  m.needsBand = s.needsBand;
-  m.playedBy.clear();
-  m.playedBy.push(...s.playedBy);
+/** Put a Session into the shared state, where every player sees it. */
+function writeSession(mending: Mending, trouble: Trouble, session: Session) {
+  mending.discord = session.discord;
+  mending.trust = session.trust;
+  mending.playedBy.clear();
+  mending.playedBy.push(...session.playedBy);
+  // The need goes out only once the band has heard it. If a flat break costs
+  // them the Trust, it goes quiet again until they've listened their way back.
+  mending.need = isNeedHeard(session) ? NEEDS[trouble.id] : "";
 }
