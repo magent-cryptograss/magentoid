@@ -32,16 +32,19 @@ export const Player = schema(
 );
 export type Player = SchemaType<typeof Player>;
 
-/** One trouble's Session, and how its current round is going. */
+/**
+ * One trouble's Session, and how its current round is going. What the thing
+ * is and whether it needs a band never change, so they're in the world, not here.
+ */
 export const Mending = schema(
   {
-    // These mirror `Session` in rules/session.ts.
-    thing: t.string().default(""),
-    need: t.string().default(""),
+    // These three mirror `Session` in rules/session.ts.
     discord: t.number().default(0),
     trust: t.number().default(0),
-    needsBand: t.boolean().default(false),
     playedBy: t.array("string"),
+
+    /** What it needs, once the band has listened enough to hear it. "" until then (see server/needs.ts). */
+    need: t.string().default(""),
 
     /** What happened in the last round, in words. */
     story: t.array("string"),

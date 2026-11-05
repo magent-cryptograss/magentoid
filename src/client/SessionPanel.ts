@@ -1,5 +1,6 @@
 import Phaser from "phaser";
-import { MOVES, isNeedHeard, type Move } from "../rules/session";
+import { MOVES, type Move } from "../rules/session";
+import type { Trouble } from "../rules/world";
 import type { Mending, Player } from "../server/state";
 import { MAGENTA, SCREEN_W, lettering } from "./look";
 
@@ -55,20 +56,21 @@ export class SessionPanel {
       .setVisible(false);
   }
 
-  /** Show the panel for `mending`, or hide it if you're not sitting with anything. */
-  show(mending: Mending | undefined, band: Player[], me: Player) {
-    this.box.setVisible(mending !== undefined);
-    if (!mending) return;
+  /** Show the panel for the trouble you're sitting with, or hide it if you're not sitting with anything. */
+  show(trouble: Trouble | undefined, mending: Mending | undefined, band: Player[], me: Player) {
+    this.box.setVisible(trouble !== undefined && mending !== undefined);
+    if (!trouble || !mending) return;
 
-    this.title.setText(mending.thing);
+    this.title.setText(trouble.thing);
     this.discord.show(mending.discord);
     this.trust.show(mending.trust);
-    this.need.setText(isNeedHeard(mending) ? `It needs you to ${mending.need}.` : "Listen to it, to learn what it needs.");
+    // The server only sends the need once the band has heard it.
+    this.need.setText(mending.need ? `It needs you to ${mending.need}.` : "Listen to it, to learn what it needs.");
 
     const who = band.map((p) => `${p === me ? "you" : p.name}: ${p.move ? "ready" : "choosing…"}`).join("   ");
     const lines = [who];
     if (mending.countdown > 0) lines.push(`The round starts in ${Math.ceil(mending.countdown)}s, with whoever's ready.`);
-    if (mending.needsBand && band.length < 2) lines.push("This one needs a band. Alone, you can steady it, not finish it.");
+    if (trouble.needsBand && band.length < 2) lines.push("This one needs a band. Alone, you can steady it, not finish it.");
     this.band.setText(lines.join("\n"));
 
     this.story.setText(mending.story.length > 0 ? `Last round: ${mending.story.join(" ")}` : "");

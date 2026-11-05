@@ -17,14 +17,15 @@ export type Move = "listen" | "tune" | "backUp" | "takeBreak";
 
 export const MOVES: readonly Move[] = ["listen", "tune", "backUp", "takeBreak"];
 
+/**
+ * Just the numbers and the credits. What the thing is, and what it needs, live
+ * with the trouble in the world (see world.ts and server/needs.ts): the rules
+ * never need to read them.
+ */
 export interface Session {
-  /** What is out of sorts, as a player would say it. */
-  readonly thing: string;
-  /** What it needs. Players only learn this once they have listened enough. */
-  readonly need: string;
   /** 0 to 100. At 0 the thing is mended. */
   readonly discord: number;
-  /** 0 to 100. Trust makes every Tune land harder, and a break needs it. */
+  /** 0 to 100. Listening builds it. Trust makes every Tune land harder, and a break needs it. */
   readonly trust: number;
   /** A thing that needs a band can be steadied alone, but not finished alone. */
   readonly needsBand: boolean;
@@ -45,8 +46,14 @@ export interface Round {
 export const DRIFT = 3;
 /** How much Trust one Listen earns. */
 export const LISTEN_TRUST = 20;
-/** A Tune always does this much, and more with Trust (a tenth of it). */
-export const TUNE_BASE = 6;
+/** A Tune always does this much... */
+export const TUNE_BASE = 5;
+/**
+ * ...plus this share of the Trust. At a fifth, a lone player who listens first
+ * mends the banjo in half the rounds. (At a tenth, blu found, listening first
+ * saved a lone player one round on a thing that took ten: too little to notice.)
+ */
+export const TUNE_PER_TRUST = 1 / 5;
 /** A break (a solo) is the big move. When it doesn't land, see `whyBreakFallsFlat`. */
 export const BREAK_POWER = 25;
 /** A break that doesn't land costs this much Trust. */
@@ -58,8 +65,9 @@ export const STEADY = 20;
 /** Trust at which the players have listened enough to know what the thing needs. */
 export const HEARD_AT = 40;
 
-export function startSession(thing: string, need: string, discord: number, needsBand: boolean): Session {
-  return { thing, need, discord, trust: 0, needsBand, playedBy: [] };
+/** A fresh Session with something out of sorts: nobody has listened to it yet, and nobody has played. */
+export function startSession(trouble: { readonly discord: number; readonly needsBand: boolean }): Session {
+  return { discord: trouble.discord, trust: 0, needsBand: trouble.needsBand, playedBy: [] };
 }
 
 /** Takes anything with a `discord`, so the server's and the screen's copies of a Session work too. */
@@ -119,7 +127,7 @@ function effectOf(player: string, session: Session, moves: Readonly<Record<strin
     case "tune":
       // Trust from earlier rounds counts, not Trust earned this same round:
       // you can't listen and act on what you heard in the same breath.
-      return { mending: (TUNE_BASE + session.trust / 10) * lift, trust: 0, story: `${player} tuned.` };
+      return { mending: (TUNE_BASE + session.trust * TUNE_PER_TRUST) * lift, trust: 0, story: `${player} tuned.` };
 
     case "backUp":
       // Backing up does nothing on its own. It shows up in everyone else's lift.

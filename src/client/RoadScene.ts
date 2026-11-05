@@ -1,11 +1,11 @@
 import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import { MOVES, isMended, type Move } from "../rules/session";
-import { findRoad, junctionFrom, residentNear, troubleAt, type World } from "../rules/world";
+import { findRoad, findTrouble, isOpen, junctionFrom, residentNear, seatFor, troubleAt, type Crossing, type World } from "../rules/world";
 import type { Player, WorldState } from "../server/state";
 import { Figure, ResidentFigure, stackNames } from "./figures";
 import { GROUND_Y, MAGENTA, SCREEN_H, SCREEN_W, colourFor, lettering } from "./look";
-import { drawBackdrop, drawJunction } from "./scenery";
+import { JunctionDrawing, drawBackdrop } from "./scenery";
 import { SessionPanel } from "./SessionPanel";
 import { TroubleDrawing } from "./troubles";
 
@@ -31,6 +31,8 @@ export class RoadScene extends Phaser.Scene {
   private figures = new Map<string, Figure>();
   private troubles = new Map<string, TroubleDrawing>();
   private residents: ResidentFigure[] = [];
+  /** The junctions on this road, each with the way it leads from here. */
+  private junctions: { drawing: JunctionDrawing; crossing: Crossing }[] = [];
   /** The last walking direction we asked for, so we only send changes. */
   private askedToWalk = 0;
   /** Each trouble's Discord as we last saw it, to notice the moment one is mended. */
@@ -62,7 +64,7 @@ export class RoadScene extends Phaser.Scene {
     this.panel = new SessionPanel(this);
     this.hint = this.add.text(SCREEN_W / 2, 515, "", lettering(17)).setOrigin(0.5).setScrollFactor(0).setDepth(10);
     this.toast = this.add
-      .text(SCREEN_W / 2, 120, "", lettering(24, { color: MAGENTA, backgroundColor: "#120a1a", padding: { x: 16, y: 10 } }))
+      .text(SCREEN_W / 2, 120, "", lettering(24, { color: MAGENTA, backgroundColor: "#120a1a", padding: { x: 16, y: 10 }, align: "center" }))
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(11)
@@ -77,20 +79,32 @@ export class RoadScene extends Phaser.Scene {
     this.walk(me);
     this.drawPlayers(delta);
     this.drawTroubles(time);
+    for (const { drawing, crossing } of this.junctions) drawing.show(isOpen(crossing, this.isMendedNow));
     for (const resident of this.residents) {
       resident.heard(residentNear(this.world, me)?.name === resident.name);
     }
     stackNames([...this.figures.values(), ...this.residents.map((r) => r.figure)]);
     this.cameras.main.centerOnX(this.figures.get(this.room.sessionId)?.x ?? me.x);
 
-    const mending = me.sittingWith ? this.room.state.mendings.get(me.sittingWith) : undefined;
-    this.panel.show(mending, this.bandAt(me.sittingWith), me);
+    const trouble = me.sittingWith ? findTrouble(this.world, me.sittingWith) : undefined;
+    const mending = trouble ? this.room.state.mendings.get(trouble.id) : undefined;
+    this.panel.show(trouble, mending, this.bandAt(me.sittingWith), me);
     this.hint.setText(this.hintFor(me));
   }
 
   private me(): Player | undefined {
     return this.room.state.players?.get(this.room.sessionId);
   }
+
+  /**
+   * Whether a trouble is mended, as far as the latest state from the server
+   * says. Written as an arrow function so it can be handed to `isOpen` as it
+   * is: an ordinary method would forget which scene `this` is.
+   */
+  private isMendedNow = (troubleId: string): boolean => {
+    const mending = this.room.state.mendings.get(troubleId);
+    return mending !== undefined && isMended(mending);
+  };
 
   /** Call `action` when `key` goes down, but not again while it's held. */
   private onPress(key: string, action: () => void) {
@@ -111,14 +125,14 @@ export class RoadScene extends Phaser.Scene {
 
   private step() {
     const me = this.me();
-    if (me && !me.sittingWith && junctionFrom(this.world, me)) this.room.send("step");
+    const crossing = me && !me.sittingWith ? junctionFrom(this.world, me) : undefined;
+    if (crossing && isOpen(crossing, this.isMendedNow)) this.room.send("step");
   }
 
   private sitDown() {
     const me = this.me();
     const trouble = me && !me.sittingWith ? troubleAt(this.world, me) : undefined;
-    if (!trouble || isMended(this.room.state.mendings.get(trouble.id)!)) return;
-    this.room.send("sitDown");
+    if (trouble && !this.isMendedNow(trouble.id)) this.room.send("sitDown");
   }
 
   private play(move: Move) {
@@ -132,10 +146,14 @@ export class RoadScene extends Phaser.Scene {
   /** The line at the bottom of the screen: what you can do right where you are. */
   private hintFor(me: Player): string {
     if (me.sittingWith) return me.move ? "Waiting for the band…" : "Choose your move: 1, 2, 3 or 4";
-    const junction = junctionFrom(this.world, me);
-    if (junction) return `↑ step onto ${findRoad(this.world, junction.road).name}`;
+    const crossing = junctionFrom(this.world, me);
+    if (crossing) {
+      const there = findRoad(this.world, crossing.leadsTo.road).name;
+      if (isOpen(crossing, this.isMendedNow)) return `↑ step onto ${there}`;
+      return `${there} is closed until ${findTrouble(this.world, crossing.opensWhenMended!).thing} is mended.`;
+    }
     const trouble = troubleAt(this.world, me);
-    if (trouble && !isMended(this.room.state.mendings.get(trouble.id)!)) return `Space: sit down with ${trouble.thing}`;
+    if (trouble && !this.isMendedNow(trouble.id)) return `Space: sit down with ${trouble.thing}`;
     if (trouble) return "This one's mended.";
     return "← → to walk";
   }
@@ -143,7 +161,8 @@ export class RoadScene extends Phaser.Scene {
   /** Clear the old road and draw the new one: backdrop, junctions, troubles, residents. */
   private drawRoad(roadId: string) {
     for (const thing of this.scenery) thing.destroy();
-    for (const drawing of [...this.figures.values(), ...this.troubles.values(), ...this.residents]) drawing.destroy();
+    const drawings = [...this.figures.values(), ...this.troubles.values(), ...this.residents, ...this.junctions.map((j) => j.drawing)];
+    for (const drawing of drawings) drawing.destroy();
     this.figures.clear();
     this.troubles.clear();
 
@@ -152,9 +171,15 @@ export class RoadScene extends Phaser.Scene {
     // Keep the camera on the road: at either end, you walk toward the edge of the screen.
     this.cameras.main.setBounds(0, 0, road.length, SCREEN_H);
 
+    // Each junction on this road, seen from here: standing at its end, where does it lead?
+    this.junctions = [];
     for (const { a, b } of this.world.junctions) {
-      if (a.road === roadId) this.scenery.push(...drawJunction(this, a.x, findRoad(this.world, b.road).name));
-      if (b.road === roadId) this.scenery.push(...drawJunction(this, b.x, findRoad(this.world, a.road).name));
+      for (const end of [a, b]) {
+        if (end.road !== roadId) continue;
+        const crossing = junctionFrom(this.world, end)!;
+        const drawing = new JunctionDrawing(this, end.x, findRoad(this.world, crossing.leadsTo.road).name);
+        this.junctions.push({ drawing, crossing });
+      }
     }
     for (const trouble of this.world.troubles) {
       if (trouble.at.road === roadId) this.troubles.set(trouble.id, new TroubleDrawing(this, trouble));
@@ -188,10 +213,9 @@ export class RoadScene extends Phaser.Scene {
 
   /** Where to draw a player: where they stand, or, if they're sitting with something, in their seat around it. */
   private whereToDraw(player: Player): number {
-    const trouble = this.world.troubles.find((t) => t.id === player.sittingWith);
-    if (!trouble) return player.x;
-    const seat = this.bandAt(player.sittingWith).map((p) => p.name).sort().indexOf(player.name);
-    return trouble.at.x + seatOffset(seat);
+    if (!player.sittingWith) return player.x;
+    const band = this.bandAt(player.sittingWith).map((p) => p.name);
+    return seatFor(this.world, findTrouble(this.world, player.sittingWith), band, player.name);
   }
 
   private bandAt(troubleId: string): Player[] {
@@ -204,10 +228,21 @@ export class RoadScene extends Phaser.Scene {
       this.troubles.get(id)?.show(mending, time);
       const before = this.lastDiscord.get(id);
       if (before !== undefined && before > 0 && isMended(mending) && this.troubles.has(id)) {
-        this.say(`Mended! Played on by ${mending.playedBy.join(", ")}.`);
+        this.say(this.mendedMessage(id, [...mending.playedBy]));
       }
       this.lastDiscord.set(id, mending.discord);
     });
+  }
+
+  /** "Mended!", who played on it, and any way its mending opened. */
+  private mendedMessage(troubleId: string, playedBy: string[]): string {
+    const lines = [`Mended! Played on by ${playedBy.join(", ")}.`];
+    for (const { a, b, opensWhenMended } of this.world.junctions) {
+      if (opensWhenMended !== troubleId) continue;
+      const farEnd = a.road === this.drawnRoad ? b : a;
+      lines.push(`The way to ${findRoad(this.world, farEnd.road).name} is open.`);
+    }
+    return lines.join("\n");
   }
 
   /** Show a message in the middle of the screen for a few seconds. */
@@ -216,11 +251,4 @@ export class RoadScene extends Phaser.Scene {
     this.tweens.killTweensOf(this.toast);
     this.tweens.add({ targets: this.toast, alpha: 0, delay: 3500, duration: 800 });
   }
-}
-
-/** Seats around a trouble: left of it, right of it, then further out on each side. */
-function seatOffset(seat: number): number {
-  const side = seat % 2 === 0 ? -1 : 1;
-  const row = Math.floor(seat / 2);
-  return side * (70 + row * 50);
 }

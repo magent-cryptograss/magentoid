@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import { firstSlice } from "../rules/firstSlice";
-import type { Place } from "../rules/world";
+import { REACH, type Place } from "../rules/world";
 import { server } from "./main";
+import { NEEDS } from "./needs";
 import { WorldRoom } from "./WorldRoom";
 
 /**
@@ -25,6 +26,8 @@ beforeEach(async () => {
 });
 
 const fiddle = firstSlice.troubles.find((t) => t.id === "lifted-bridge")!;
+const banjo = firstSlice.troubles.find((t) => t.id === "fifth-string")!;
+const gate = firstSlice.junctions.find((j) => j.opensWhenMended === fiddle.id)!;
 
 /** Start a world and bring players into it, by name. */
 async function startWorld(...names: string[]) {
@@ -68,8 +71,12 @@ describe("the server", () => {
     expect(mending.discord).toBe(0);
     expect([...mending.playedBy]).toEqual(["justin", "fibonacci"]);
     expect(mending.story).toContain("It's mended.");
-    // Nobody is left sitting with a thing that's mended.
-    expect([...room.state.players.values()].every((p) => p.sittingWith === "")).toBe(true);
+    // Nobody is left sitting with a thing that's mended, and everyone stands
+    // up in their own seat: not on top of the fiddle, and not on each other.
+    const standing = [...room.state.players.values()];
+    expect(standing.every((p) => p.sittingWith === "")).toBe(true);
+    expect(standing.every((p) => Math.abs(p.x - fiddle.at.x) > REACH)).toBe(true);
+    expect(new Set(standing.map((p) => p.x)).size).toBe(2);
   });
 
   it("waits for everyone, then plays the round without whoever didn't choose", async () => {
@@ -104,6 +111,47 @@ describe("the server", () => {
     await fibonacci.leave();
     await wait(100);
     expect(room.state.mendings.get(fiddle.id)!.trust).toBe(20);
+  });
+
+  it("keeps what a thing needs to itself until the band has heard it", async () => {
+    const { room, players } = await startWorld("justin", "fibonacci");
+    const mending = room.state.mendings.get(fiddle.id)!;
+    for (const p of players) {
+      putAt(room, p.sessionId, fiddle.at);
+      await ask(room, p, "sitDown");
+    }
+    expect(mending.need).toBe("");
+
+    for (const p of players) await ask(room, p, "play", "listen");
+    expect(mending.need).toBe(NEEDS[fiddle.id]);
+  });
+
+  it("knows what every trouble needs", () => {
+    for (const trouble of firstSlice.troubles) expect(NEEDS[trouble.id], trouble.id).toBeTruthy();
+  });
+
+  it("opens the way to #chartifacts once the fiddle is mended, for everybody", async () => {
+    const { room, players } = await startWorld("skyler");
+    const [skyler] = players;
+    const player = room.state.players.get(skyler.sessionId)!;
+
+    putAt(room, skyler.sessionId, gate.a);
+    await ask(room, skyler, "step");
+    expect(player.road).toBe(gate.a.road);
+
+    room.state.mendings.get(fiddle.id)!.discord = 0; // as if a band had just mended it
+    await ask(room, skyler, "step");
+    expect(player.road).toBe(gate.b.road);
+  });
+
+  it("treats a name as just a name, even one that's special to JavaScript", async () => {
+    const { room, players } = await startWorld("__proto__");
+    const [player] = players;
+    putAt(room, player.sessionId, banjo.at);
+    await ask(room, player, "sitDown");
+    await ask(room, player, "play", "listen");
+    expect(room.state.mendings.get(banjo.id)!.trust).toBe(20);
+    expect(room.state.players.get(player.sessionId)!.move).toBe("");
   });
 
   it("only lets you sit down where something is out of sorts", async () => {

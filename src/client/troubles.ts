@@ -13,9 +13,11 @@ export class TroubleDrawing {
   private readonly glow: Phaser.GameObjects.Arc;
   private readonly shape: Phaser.GameObjects.Container;
   private readonly label: Phaser.GameObjects.Text;
+  private readonly thing: string;
 
   constructor(scene: Phaser.Scene, trouble: Trouble) {
     const x = trouble.at.x;
+    this.thing = trouble.thing;
     // Drawn fully opaque, then faded with setAlpha: a circle made with alpha 0 can never be faded back in.
     this.glow = scene.add.circle(x, GROUND_Y - 40, 72, 0xffd27a).setAlpha(0).setDepth(1);
     this.shape = scene.add.container(x, GROUND_Y - 40, SHAPES[trouble.looks](scene)).setDepth(2);
@@ -27,7 +29,7 @@ export class TroubleDrawing {
 
   show(mending: Mending, now: number) {
     const mended = isMended(mending);
-    this.label.setText(mended ? `mended by ${mending.playedBy.join(", ")}` : mending.thing);
+    this.label.setText(mended ? `mended by ${mending.playedBy.join(", ")}` : this.thing);
     this.glow.setAlpha(mended ? 0.22 : 0);
     this.shape.setAlpha(mended ? 1 : 0.6 + 0.4 * Math.abs(Math.sin(now / 300)));
   }

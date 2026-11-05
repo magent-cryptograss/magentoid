@@ -13,8 +13,8 @@ import {
   type Session,
 } from "./session";
 
-const fiddle = (): Session =>
-  startSession("a fiddle with a lifted bridge", "slack the strings before you move the bridge", 60, true);
+const fiddle = (): Session => startSession({ discord: 60, needsBand: true });
+const banjo = (): Session => startSession({ discord: 20, needsBand: false });
 
 /** Play the same moves round after round, and return the Session at the end. */
 function playRounds(session: Session, rounds: number, moves: Record<string, Move>): Session {
@@ -54,6 +54,18 @@ describe("a Session", () => {
     const coldProgress = 60 - cold.discord;
     const warmProgress = 60 + 2 * DRIFT - warmed.discord;
     expect(warmProgress).toBeGreaterThan(coldProgress);
+  });
+
+  it("pays a lone player back for listening, enough to notice", () => {
+    // blu's second finding: before, listening first saved a lone player one
+    // round on a thing that took ten. The banjo is where people learn the game,
+    // and the lesson there should be "listen first".
+    const justTune = roundsToMend(banjo(), [], { justin: "tune" });
+    const listenFirst = roundsToMend(banjo(), [{ justin: "listen" }, { justin: "listen" }], { justin: "tune" });
+    expect(listenFirst).toBeLessThanOrEqual(justTune / 2);
+    // And listening only once already helps: there's no point where listening is a trap.
+    const listenOnce = roundsToMend(banjo(), [{ justin: "listen" }], { justin: "tune" });
+    expect(listenOnce).toBeLessThan(justTune);
   });
 
   it("can be steadied alone, but not finished alone, when it needs a band", () => {
