@@ -2,7 +2,7 @@ import type { World } from "./world";
 
 /**
  * The first slice of the world: three Moods, two junctions (one closed at
- * first), three troubles, and one resident.
+ * first), three troubles, and two residents.
  *
  * Later the roads come from magenta's own list of Moods, and the junctions
  * maybe from the connectome (two roads meet where somebody played on both).
@@ -59,6 +59,13 @@ export const firstSlice: World = {
       colour: 0xff67fd,
       at: { road: "magentoid", x: 560 },
       says: "Hey, glad you came! Down the road there's a banjo that won't hold its fifth string. Listen to it before you touch a peg.",
+    },
+    {
+      // blu lives just past the first door a band opens, where the charts are.
+      name: "blu",
+      colour: 0x1976d2,
+      at: { road: "chartifacts", x: 560 },
+      says: "Well, look what come through the gate! Your names are on that fiddle now, wrote down true. Up yonder's a chart with Folgers all over the bridge. Don't you guess at what's under the stain. Sit down and listen first.",
     },
   ],
   start: { road: "magentoid", x: 300 },
