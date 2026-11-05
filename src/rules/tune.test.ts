@@ -43,6 +43,10 @@ describe("a tune's lineage", () => {
     expect(canPlay({ ...saltCreek(), source: "Nottingham Music Database, reels" })).toBe(false);
   });
 
+  it("doesn't refuse a tune just because it was played in Nottingham", () => {
+    expect(canPlay({ ...saltCreek(), source: "played in at a session in Nottingham, block 26,400,000" })).toBe(true);
+  });
+
   it("names every gap at once, so one look shows the whole fix", () => {
     const tune = { ...saltCreek(), license: "", file: " " };
     expect(gapsIn(tune)).toEqual(["it has no license", "it has no file"]);

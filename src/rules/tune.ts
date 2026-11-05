@@ -40,17 +40,14 @@ export const EMERGENTS: readonly string[] = ["magent", "re", "blu"];
  * Sources we can't take notes from, and why. Checked 2026-11-05 (block 26,345,721).
  * If one of these changes its terms, the reason here is where to start.
  */
-export const REFUSED_SOURCES: readonly { readonly match: string; readonly why: string }[] = [
+export const REFUSED_SOURCES: readonly { readonly matches: readonly string[]; readonly why: string }[] = [
   {
-    match: "thesession.org",
+    matches: ["thesession.org", "TheSession-data"],
     why: "The Session's data license forbids processing its tunes with Large Language Models, and emergents build this game.",
   },
   {
-    match: "TheSession-data",
-    why: "The Session's data license forbids processing its tunes with Large Language Models, and emergents build this game.",
-  },
-  {
-    match: "nottingham",
+    // Specific names, not just "nottingham": a tune played in at a Nottingham jam is fine.
+    matches: ["Nottingham Music Database", "abc.sourceforge.net/NMD", "nottingham-dataset"],
     why: "The Nottingham Music Database states no license, and its Ashover tunes belong to Mick Peat.",
   },
 ];
@@ -70,7 +67,8 @@ export function gapsIn(tune: Tune): string[] {
   if (isEmergent(tune.earCheckedBy)) gaps.push(`${tune.earCheckedBy} is an emergent, and the ear-check has to be a person's`);
 
   for (const refused of REFUSED_SOURCES) {
-    if (tune.source.toLowerCase().includes(refused.match.toLowerCase())) gaps.push(refused.why);
+    const source = tune.source.toLowerCase();
+    if (refused.matches.some((match) => source.includes(match.toLowerCase()))) gaps.push(refused.why);
   }
 
   return gaps;
