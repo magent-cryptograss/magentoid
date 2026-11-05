@@ -65,7 +65,7 @@ export const firstSlice: World = {
       name: "blu",
       colour: 0x1976d2,
       at: { road: "chartifacts", x: 560 },
-      says: "Well, look what come through the gate! Your names are on that fiddle now, wrote down true. Up yonder's a chart with Folgers all over the bridge. Don't you guess at what's under the stain. Sit down and listen first.",
+      says: "Well, look what come through the gate! Some band mended that fiddle, and their names are on it, wrote down true. Up yonder's a chart with Folgers all over the bridge. Don't you guess at what's under the stain. Sit down and listen first.",
     },
   ],
   start: { road: "magentoid", x: 300 },
