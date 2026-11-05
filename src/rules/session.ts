@@ -127,7 +127,11 @@ function effectOf(player: string, session: Session, moves: Readonly<Record<strin
     case "tune":
       // Trust from earlier rounds counts, not Trust earned this same round:
       // you can't listen and act on what you heard in the same breath.
-      return { mending: (TUNE_BASE + session.trust * TUNE_PER_TRUST) * lift, trust: 0, story: `${player} tuned.` };
+      // Trust past HEARD_AT doesn't sharpen a Tune: once you know the tune,
+      // more listening won't tune it better. Without this cap, a band that
+      // listened long enough did better all tuning at once than backing a
+      // break, and the band's big move stopped mattering (blu, round 3).
+      return { mending: (TUNE_BASE + Math.min(session.trust, HEARD_AT) * TUNE_PER_TRUST) * lift, trust: 0, story: `${player} tuned.` };
 
     case "backUp":
       // Backing up does nothing on its own. It shows up in everyone else's lift.

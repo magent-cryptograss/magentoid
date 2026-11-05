@@ -148,4 +148,11 @@ describe("the story of a round", () => {
     const { story } = playRound(steadied, { justin: "tune" });
     expect(story).toContain("One player can steady it, but it takes a band to finish.");
   });
+
+  it("rewards backing a break over everyone tuning at once, however long the band listened", () => {
+    const listened: Session = { ...startSession({ discord: 90, needsBand: true }), trust: 100 };
+    const allTune = playRound(listened, { a: "tune", b: "tune", c: "tune" }).session;
+    const aBreak = playRound(listened, { a: "takeBreak", b: "backUp", c: "backUp" }).session;
+    expect(aBreak.discord).toBeLessThan(allTune.discord);
+  });
 });
