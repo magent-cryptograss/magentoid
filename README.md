@@ -39,7 +39,7 @@ npm start                 # serves the game and runs the server, on that one por
 A Session is this game's battle, except the goal is to leave the thing better than you found it.
 
 - **Discord** is how out of sorts it is. At zero, it's mended.
-- **Trust** goes up when you **Listen**, and every **Tune** lands harder with it: alone, listening first gets the banjo mended in half the rounds. With enough Trust you hear what the thing needs, and only then does the game tell you.
+- **Trust** goes up when you **Listen**, and every **Tune** lands harder with it: alone, listening first gets the banjo mended in half the rounds. With enough Trust you hear what the thing needs, and only then does the game tell you. Past that point, more listening won't make a Tune any better: you already know the tune.
 - **Back up** does nothing by itself. It makes everyone *else's* move stronger, the way a rhythm player does.
 - **Take a break** is the solo, the biggest move. It only lands when the tune is known, somebody's backing you, and nobody else is taking a break at the same time. Otherwise it falls flat and costs Trust. You don't take a break on a tune you don't know.
 - Every round, a thing nobody fixes gets a little worse. That's the only pressure.

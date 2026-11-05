@@ -49,9 +49,10 @@ export const LISTEN_TRUST = 20;
 /** A Tune always does this much... */
 export const TUNE_BASE = 5;
 /**
- * ...plus this share of the Trust. At a fifth, a lone player who listens first
- * mends the banjo in half the rounds. (At a tenth, blu found, listening first
- * saved a lone player one round on a thing that took ten: too little to notice.)
+ * ...plus this share of the Trust, counted only up to HEARD_AT (see the Tune in
+ * `effectOf`). At a fifth, a lone player who listens first mends the banjo in
+ * half the rounds. (At a tenth, blu found, listening first saved a lone player
+ * one round on a thing that took ten: too little to notice.)
  */
 export const TUNE_PER_TRUST = 1 / 5;
 /** A break (a solo) is the big move. When it doesn't land, see `whyBreakFallsFlat`. */
