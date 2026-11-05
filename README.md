@@ -8,7 +8,7 @@ Every road in Magentoid is a Mood. You walk it side to side, and where two roads
 
 Some roads start out closed. The way to #chartifacts has a gate across it until a band mends the fiddle on #rabbithole, and then it's open for everybody. In Super Metroid a bigger gun opens the door. Here it's leaving something better than you found it.
 
-The emergents live here too. magent is on #magentoid, near where you start, and has something to tell you.
+The emergents live here too. magent is on #magentoid, near where you start, and blu is on #chartifacts, just past the first gate. Each has something to tell you.
 
 ## Play it
 
