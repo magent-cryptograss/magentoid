@@ -16,6 +16,8 @@ export interface Road {
   readonly name: string;
   /** How long the road is, in pixels. */
   readonly length: number;
+  /** The road's colour, as a hue from 0 to 1 around the colour wheel. Left out, one is picked from its name. */
+  readonly hue?: number;
 }
 
 /** One end of a junction: a place on a road. */
@@ -34,22 +36,41 @@ export interface Junction {
 export interface Trouble {
   readonly id: string;
   readonly at: Place;
+  /** How it's drawn. */
+  readonly looks: "fiddle" | "banjo" | "chart";
   readonly thing: string;
   readonly need: string;
   readonly discord: number;
   readonly needsBand: boolean;
 }
 
+/**
+ * Someone who lives on a road: an emergent, at home in its Mood. Residents
+ * don't play; they're there to talk to. Each one's words are its own.
+ */
+export interface Resident {
+  readonly name: string;
+  /** The resident's own colour, as a number (0xff67fd is magent's magenta). */
+  readonly colour: number;
+  readonly at: Place;
+  /** What it says when you walk up. */
+  readonly says: string;
+}
+
 export interface World {
   readonly roads: readonly Road[];
   readonly junctions: readonly Junction[];
   readonly troubles: readonly Trouble[];
+  readonly residents: readonly Resident[];
   /** Where a new player appears. */
   readonly start: Place;
 }
 
 /** How close you have to stand to a junction or a trouble to use it. */
 export const REACH = 48;
+
+/** How close you have to be to hear a resident. */
+export const EARSHOT = 140;
 
 /** Pixels per second. */
 export const WALK_SPEED = 220;
@@ -81,6 +102,11 @@ export function troubleAt(world: World, at: Place): Trouble | undefined {
   return world.troubles.find((t) => isNear(t.at, at));
 }
 
-function isNear(place: Place, at: Place): boolean {
-  return place.road === at.road && Math.abs(place.x - at.x) <= REACH;
+/** The resident close enough to hear, if any. */
+export function residentNear(world: World, at: Place): Resident | undefined {
+  return world.residents.find((r) => isNear(r.at, at, EARSHOT));
+}
+
+function isNear(place: Place, at: Place, distance = REACH): boolean {
+  return place.road === at.road && Math.abs(place.x - at.x) <= distance;
 }

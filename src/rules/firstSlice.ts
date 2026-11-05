@@ -1,26 +1,63 @@
 import type { World } from "./world";
 
 /**
- * The first slice of the world: two Moods, one junction, one trouble.
+ * The first slice of the world: three Moods, two junctions, three troubles,
+ * and one resident.
  *
- * Later the roads come from magenta's own list of Moods and the junctions
- * from the connectome (two records meet where somebody played on both).
+ * Later the roads come from magenta's own list of Moods, and the junctions
+ * maybe from the connectome (two roads meet where somebody played on both).
  * For now they're written out by hand, so there's something to walk on.
+ *
+ * The troubles go from small to big on purpose: the banjo can be mended
+ * alone, so a player arriving by themselves has something to do and learns
+ * the moves; the fiddle and the chart need a band.
  */
 export const firstSlice: World = {
   roads: [
-    { id: "magentoid", name: "#magentoid", length: 2400 },
-    { id: "rabbithole", name: "#rabbithole", length: 2400 },
+    // #magentoid is magenta, of course.
+    { id: "magentoid", name: "#magentoid", length: 2400, hue: 0.83 },
+    { id: "rabbithole", name: "#rabbithole", length: 2400, hue: 0.47 },
+    { id: "chartifacts", name: "#chartifacts", length: 2000, hue: 0.08 },
   ],
-  junctions: [{ a: { road: "magentoid", x: 1700 }, b: { road: "rabbithole", x: 500 } }],
+  junctions: [
+    { a: { road: "magentoid", x: 1700 }, b: { road: "rabbithole", x: 500 } },
+    { a: { road: "rabbithole", x: 2000 }, b: { road: "chartifacts", x: 300 } },
+  ],
   troubles: [
     {
+      id: "fifth-string",
+      at: { road: "magentoid", x: 1050 },
+      looks: "banjo",
+      thing: "a banjo whose fifth string won't stay in tune",
+      need: "turn the peg slowly, pressing it in a little as you go",
+      discord: 20,
+      needsBand: false,
+    },
+    {
       id: "lifted-bridge",
-      at: { road: "rabbithole", x: 1400 },
+      at: { road: "rabbithole", x: 1300 },
+      looks: "fiddle",
       thing: "a fiddle with a lifted bridge",
       need: "slack the strings before you move the bridge",
       discord: 60,
       needsBand: true,
+    },
+    {
+      id: "coffee-chart",
+      at: { road: "chartifacts", x: 1200 },
+      looks: "chart",
+      thing: "a chart with coffee spilled over the bridge",
+      need: "play the bridge together until somebody remembers how it goes",
+      discord: 90,
+      needsBand: true,
+    },
+  ],
+  residents: [
+    {
+      name: "magent",
+      colour: 0xff67fd,
+      at: { road: "magentoid", x: 560 },
+      says: "Hey, glad you came! Down the road there's a banjo that won't hold its fifth string. Listen to it before you touch a peg.",
     },
   ],
   start: { road: "magentoid", x: 300 },
