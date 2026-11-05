@@ -8,6 +8,7 @@ import { GROUND_Y, MAGENTA, SCREEN_H, SCREEN_W, colourFor, lettering } from "./l
 import { JunctionDrawing, drawBackdrop } from "./scenery";
 import { SessionPanel } from "./SessionPanel";
 import { TroubleDrawing } from "./troubles";
+import { DebugPanel } from "./DebugPanel";
 
 /** The number keys that play each move, in the same order as MOVES. */
 const MOVE_KEYS = ["ONE", "TWO", "THREE", "FOUR"];
@@ -24,6 +25,7 @@ export class RoadScene extends Phaser.Scene {
   private panel!: SessionPanel;
   private hint!: Phaser.GameObjects.Text;
   private toast!: Phaser.GameObjects.Text;
+  private debug!: DebugPanel;
 
   /** The road we last drew, so we know when to draw a new one. */
   private drawnRoad = "";
@@ -61,6 +63,7 @@ export class RoadScene extends Phaser.Scene {
     this.game.events.on(Phaser.Core.Events.BLUR, () => keyboard.resetKeys());
     this.game.events.on(Phaser.Core.Events.HIDDEN, () => keyboard.resetKeys());
 
+    this.debug = new DebugPanel(this.room, this.world, this.game);
     this.panel = new SessionPanel(this);
     this.hint = this.add.text(SCREEN_W / 2, 515, "", lettering(17)).setOrigin(0.5).setScrollFactor(0).setDepth(10);
     this.toast = this.add
@@ -90,6 +93,18 @@ export class RoadScene extends Phaser.Scene {
     const mending = trouble ? this.room.state.mendings.get(trouble.id) : undefined;
     this.panel.show(trouble, mending, this.bandAt(me.sittingWith), me);
     this.hint.setText(this.hintFor(me));
+    this.debug.update({
+      me,
+      drawnX: this.figures.get(this.room.sessionId)?.x,
+      askedToWalk: this.askedToWalk,
+      cameraX: this.cameras.main.scrollX,
+    });
+  }
+
+  /** Ask the server for something. Every request goes through here, so the debug panel can count them. */
+  private ask(type: string, message?: unknown) {
+    this.room.send(type, message);
+    this.debug.sent(type, message);
   }
 
   private me(): Player | undefined {
@@ -119,28 +134,28 @@ export class RoadScene extends Phaser.Scene {
     // Sitting down, you're not walking, whatever you hold. Get up still holding an arrow, and off you go.
     const direction = me.sittingWith ? 0 : held;
     if (direction === this.askedToWalk) return;
-    this.room.send("walk", direction);
+    this.ask("walk", direction);
     this.askedToWalk = direction;
   }
 
   private step() {
     const me = this.me();
     const crossing = me && !me.sittingWith ? junctionFrom(this.world, me) : undefined;
-    if (crossing && isOpen(crossing, this.isMendedNow)) this.room.send("step");
+    if (crossing && isOpen(crossing, this.isMendedNow)) this.ask("step");
   }
 
   private sitDown() {
     const me = this.me();
     const trouble = me && !me.sittingWith ? troubleAt(this.world, me) : undefined;
-    if (trouble && !this.isMendedNow(trouble.id)) this.room.send("sitDown");
+    if (trouble && !this.isMendedNow(trouble.id)) this.ask("sitDown");
   }
 
   private play(move: Move) {
-    if (this.me()?.sittingWith) this.room.send("play", move);
+    if (this.me()?.sittingWith) this.ask("play", move);
   }
 
   private getUp() {
-    if (this.me()?.sittingWith) this.room.send("getUp");
+    if (this.me()?.sittingWith) this.ask("getUp");
   }
 
   /** The line at the bottom of the screen: what you can do right where you are. */

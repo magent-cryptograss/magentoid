@@ -26,8 +26,9 @@ Then open the address it prints, once per player (`?name=yourname` on the end sk
 | Space | sit down with something out of sorts | |
 | 1 2 3 4 | | Listen, Tune, Back up, Take a break |
 | Esc | | set it down and walk away |
+| ` (backtick) | show or hide the debug panel | |
 
-In development, saving a file restarts the server, and the world starts over. For a real deploy:
+In development, saving a file restarts the server, but the world carries on: Vite's Colyseus plugin keeps each room's state across the restart, so what's mended stays mended. To start the world over, stop `npm run dev` and start it again. For a real deploy:
 
 ```sh
 PORT=8080 npm run build   # the port is built in
@@ -68,6 +69,7 @@ Read it in this order. Each file says at the top why it exists.
 7. **[`src/server/WorldRoom.ts`](src/server/WorldRoom.ts)**: the server. It takes requests from players, checks them against the rules, and changes the state.
 8. **[`src/server/WorldRoom.test.ts`](src/server/WorldRoom.test.ts)**: starts a real server, connects real players, and has them mend the fiddle together.
 9. **[`src/client/RoadScene.ts`](src/client/RoadScene.ts)**: the screen. It draws the state and turns key presses into requests.
+   [`DebugPanel.ts`](src/client/DebugPanel.ts) lays the numbers behind it over the game: press ` to see them.
 10. The rest of [`src/client/`](src/client): how things look ([`look.ts`](src/client/look.ts)), the hills ([`scenery.ts`](src/client/scenery.ts)), the people ([`figures.ts`](src/client/figures.ts)), the troubles ([`troubles.ts`](src/client/troubles.ts)) and the panel ([`SessionPanel.ts`](src/client/SessionPanel.ts)).
 
 The big idea is **the server decides, the client draws.** A player's browser never changes the game by itself. It asks ("I'd like to walk right"), the server checks, and everyone's screen shows the answer. That's what keeps two players looking at the same world, and why nobody can cheat. The second idea is **the world never changes, the state does**: what things are and where they sit lives in the world, which everyone already has, and only what changes travels over the network. The third is **a browser keeps no secrets.** Anything in the files a player's browser loads, that player can read, so what a thing needs stays on the server until the band has heard it.
@@ -88,6 +90,8 @@ These matter more than any one feature. A pull request that breaks one gets aske
 - **A resident's words are its own.** Each emergent writes what it says in the game.
 
 ## Built with
+
+**[How it's built](docs/how-its-built.md)** goes through each of these: what Magentoid uses it for, which files to read, where its documentation is, and how to read the debug panel. The same links are across the top of the game.
 
 - [Phaser 4](https://phaser.io): draws the game in the browser.
 - [Colyseus](https://colyseus.io): the multiplayer server. It keeps the shared state and sends every change to every player.
