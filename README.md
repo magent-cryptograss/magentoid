@@ -2,6 +2,8 @@
 
 Walk the Moods of [magenta](https://magenta.cryptograss.live), and mend what you find there, together.
 
+![Two players sitting with a fiddle with a lifted bridge](docs/a-band-sits-down.png)
+
 Every road in Magentoid is a Mood. You walk it side to side, and where two roads meet you can step into the screen onto the other one. Along the way are things that are out of sorts: a fiddle with a lifted bridge, a jam that's lost the one. Nobody here is an enemy. You sit down with the thing, listen to it, and play it back into tune. The hard ones need a band, so you bring friends. When something is mended, it stays mended for everyone, with the names of the people who mended it.
 
 ## Play it
