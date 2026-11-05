@@ -2,17 +2,42 @@ import Phaser from "phaser";
 import { Client } from "@colyseus/sdk";
 import { firstSlice } from "../rules/firstSlice";
 import { WorldState } from "../server/state";
+import { SCREEN_H, SCREEN_W } from "./look";
 import { RoadScene } from "./RoadScene";
-import { SCREEN_H, SCREEN_W } from "./scenery";
 
 /**
- * Where the game starts in the browser: ask your name, join the shared world
- * on the server, then hand the screen to the road.
+ * Where the game starts in the browser: find out your name, join the shared
+ * world on the server, then hand the screen to the road.
  */
-const name = new URLSearchParams(location.search).get("name") ?? prompt("What should we call you?") ?? "";
+
+/** Words shown over the page when something has gone wrong. */
+function sayOnPage(message: string) {
+  const notice = document.getElementById("notice")!;
+  notice.textContent = message;
+  notice.hidden = false;
+}
+
+/** Your name: from the address (?name=…), or what you told us last time, or ask. */
+function yourName(): string {
+  const fromAddress = new URLSearchParams(location.search).get("name");
+  if (fromAddress) return fromAddress;
+
+  const remembered = localStorage.getItem("magentoid-name");
+  if (remembered) return remembered;
+
+  const typed = (prompt("What should we call you?") ?? "").trim();
+  if (typed) localStorage.setItem("magentoid-name", typed);
+  return typed;
+}
 
 // The server lives at the same address as this page (Vite runs both).
-const room = await new Client(location.origin).joinOrCreate("world", { name }, WorldState);
+const client = new Client(location.origin);
+const room = await client.joinOrCreate("world", { name: yourName() }, WorldState).catch((error) => {
+  sayOnPage("Couldn't reach the game's server. If you're running it yourself, is `npm run dev` still going?");
+  throw error;
+});
+
+room.onLeave(() => sayOnPage("Lost the connection to the server. Reload the page to come back."));
 
 new Phaser.Game({
   type: Phaser.AUTO,

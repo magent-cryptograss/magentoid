@@ -1,4 +1,6 @@
 import Phaser from "phaser";
+import type { Road } from "../rules/world";
+import { GROUND_Y, MAGENTA, SCREEN_H, SCREEN_W, hashOf, lettering } from "./look";
 
 /**
  * Scenery is drawn, not loaded: flat polygons, a few colours each, in the
@@ -7,41 +9,71 @@ import Phaser from "phaser";
  * this later, one layer at a time.
  */
 
-export const SCREEN_W = 960;
-export const SCREEN_H = 540;
-/** The height of the road surface, where everyone's feet are. */
-export const GROUND_Y = 440;
-
-/** Each road gets its own colours, picked from its name, so every Mood looks like itself. */
-export interface Palette {
-  sky: number;
+/** The colours of one road. Every road gets its own, from its hue. */
+interface Palette {
+  skyTop: number;
+  skyBottom: number;
+  moon: number;
   far: number;
+  middle: number;
   near: number;
   ground: number;
+  road: number;
 }
 
-export function paletteFor(roadId: string): Palette {
-  const hue = (hashOf(roadId) % 360) / 360;
-  const at = (s: number, l: number) => Phaser.Display.Color.HSLToColor(hue, s, l).color;
-  return { sky: at(0.35, 0.12), far: at(0.3, 0.2), near: at(0.35, 0.28), ground: at(0.25, 0.16) };
+function paletteFor(road: Road): Palette {
+  const hue = road.hue ?? (hashOf(road.id) % 360) / 360;
+  // `shift` nudges the hue a little, so the layers aren't all exactly one colour.
+  const colour = (saturation: number, lightness: number, shift = 0) =>
+    Phaser.Display.Color.HSLToColor((hue + shift + 1) % 1, saturation, lightness).color;
+  return {
+    skyTop: colour(0.45, 0.07),
+    skyBottom: colour(0.5, 0.22, 0.04),
+    moon: colour(0.55, 0.85, 0.08),
+    far: colour(0.32, 0.24),
+    middle: colour(0.38, 0.17, -0.03),
+    near: colour(0.42, 0.11, -0.06),
+    ground: colour(0.3, 0.08),
+    road: colour(0.22, 0.15),
+  };
 }
 
 /**
- * Draw a road's backdrop: two ranges of hills that scroll slower than the
- * road (that's parallax, and it's what makes a flat screen feel deep), and the
- * ground itself. Returns everything drawn, so it can be cleared when you
- * change roads.
+ * Draw a road's backdrop. Layers further away scroll slower than the road
+ * (that's parallax, and it's what makes a flat screen feel deep). Returns
+ * everything drawn, so it can be cleared when you change roads.
  */
-export function drawBackdrop(scene: Phaser.Scene, roadId: string, roadLength: number): Phaser.GameObjects.GameObject[] {
-  const colours = paletteFor(roadId);
-  const random = seededRandom(hashOf(roadId));
+export function drawBackdrop(scene: Phaser.Scene, road: Road): Phaser.GameObjects.GameObject[] {
+  const colours = paletteFor(road);
+  const random = seededRandom(hashOf(road.id));
 
-  const sky = scene.add.rectangle(0, 0, SCREEN_W, SCREEN_H, colours.sky).setOrigin(0).setScrollFactor(0);
-  const far = hills(scene, colours.far, 0.25, 300, 140, roadLength, random);
-  const near = hills(scene, colours.near, 0.55, 360, 90, roadLength, random);
-  const ground = scene.add.rectangle(0, GROUND_Y, roadLength + SCREEN_W, SCREEN_H - GROUND_Y, colours.ground).setOrigin(0);
+  return [
+    ...skyBands(scene, colours.skyTop, colours.skyBottom),
+    scene.add.circle(SCREEN_W * 0.7, 170, 70, colours.moon).setScrollFactor(0.05),
+    hills(scene, colours.far, 0.2, 290, 150, road.length, random),
+    hills(scene, colours.middle, 0.45, 340, 110, road.length, random),
+    hills(scene, colours.near, 0.75, 390, 70, road.length, random),
+    scene.add.rectangle(0, GROUND_Y, road.length, SCREEN_H - GROUND_Y, colours.ground).setOrigin(0),
+    scene.add.rectangle(0, GROUND_Y, road.length, 6, colours.road).setOrigin(0),
+  ];
+}
 
-  return [sky, far, near, ground];
+/**
+ * The sky in a few flat bands, from dark at the top to lighter at the
+ * horizon. Bands instead of a smooth fade, the way the old games did it.
+ */
+function skyBands(scene: Phaser.Scene, top: number, bottom: number): Phaser.GameObjects.GameObject[] {
+  const bands = 7;
+  const height = GROUND_Y / bands;
+  const from = Phaser.Display.Color.ValueToColor(top);
+  const to = Phaser.Display.Color.ValueToColor(bottom);
+  const drawn = [];
+  for (let i = 0; i < bands; i++) {
+    const mix = Phaser.Display.Color.Interpolate.ColorWithColor(from, to, bands - 1, i);
+    const colour = Phaser.Display.Color.GetColor(mix.r, mix.g, mix.b);
+    drawn.push(scene.add.rectangle(0, i * height, SCREEN_W, height + 1, colour).setOrigin(0).setScrollFactor(0));
+  }
+  return drawn;
 }
 
 /**
@@ -59,7 +91,7 @@ function hills(
 ): Phaser.GameObjects.Graphics {
   const width = roadLength * scroll + SCREEN_W;
   const points = [new Phaser.Math.Vector2(0, GROUND_Y)];
-  for (let x = 0; x <= width; x += 60 + random() * 80) {
+  for (let x = 0; x <= width; x += 60 + random() * 90) {
     points.push(new Phaser.Math.Vector2(x, baseY - random() * height));
   }
   points.push(new Phaser.Math.Vector2(width, GROUND_Y));
@@ -67,34 +99,25 @@ function hills(
   return scene.add.graphics().fillStyle(colour).fillPoints(points, true).setScrollFactor(scroll);
 }
 
-/** A path leading into the screen, to another road. */
+/** A path leading into the screen, to another road, with a sign saying where. */
 export function drawJunction(scene: Phaser.Scene, x: number, toName: string): Phaser.GameObjects.GameObject[] {
   const path = scene.add
     .graphics()
     .fillStyle(0x000000, 0.35)
     .fillPoints(
       [
-        new Phaser.Math.Vector2(x - 50, GROUND_Y),
-        new Phaser.Math.Vector2(x - 12, GROUND_Y - 120),
-        new Phaser.Math.Vector2(x + 12, GROUND_Y - 120),
-        new Phaser.Math.Vector2(x + 50, GROUND_Y),
+        new Phaser.Math.Vector2(x - 50, GROUND_Y + 6),
+        new Phaser.Math.Vector2(x - 12, GROUND_Y - 110),
+        new Phaser.Math.Vector2(x + 12, GROUND_Y - 110),
+        new Phaser.Math.Vector2(x + 50, GROUND_Y + 6),
       ],
       true,
     );
-  const sign = scene.add.text(x, GROUND_Y - 150, `↑ ${toName}`, { fontSize: "16px", color: "#ff67fd" }).setOrigin(0.5);
-  return [path, sign];
-}
-
-/** A colour for a player, picked from their name, so you can tell people apart. */
-export function colourFor(name: string): number {
-  return Phaser.Display.Color.HSLToColor((hashOf(name) % 360) / 360, 0.6, 0.65).color;
-}
-
-/** Turn a string into a number, the same number every time. */
-function hashOf(text: string): number {
-  let hash = 0;
-  for (const char of text) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return hash;
+  const post = scene.add.rectangle(x + 64, GROUND_Y - 30, 4, 60, 0x5a4632).setOrigin(0.5, 0);
+  const sign = scene.add
+    .text(x + 64, GROUND_Y - 44, `↑ ${toName}`, lettering(15, { color: MAGENTA, backgroundColor: "#1a1020", padding: { x: 6, y: 3 } }))
+    .setOrigin(0.5);
+  return [path, post, sign];
 }
 
 /**

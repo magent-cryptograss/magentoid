@@ -1,12 +1,16 @@
 import { schema, t, type SchemaType } from "@colyseus/schema";
 
 /**
- * The shared state: everything every player's screen needs to see.
+ * The shared state: everything that changes while people play.
  *
  * Colyseus watches these objects and sends each change to every player
  * automatically. Only the server ever writes to them. A player's client
  * reads them and draws; when the player does something, the client *asks*
  * the server (see WorldRoom.ts), and the server decides.
+ *
+ * What never changes (roads, junctions, where each trouble sits) isn't here.
+ * It's in the world (rules/firstSlice.ts), which the server and every client
+ * already have.
  *
  * Every field has a default. A field without one starts out `undefined`, and
  * `undefined + 1` is NaN, which is how the first players walked off the map.
@@ -28,17 +32,21 @@ export const Player = schema(
 );
 export type Player = SchemaType<typeof Player>;
 
-/** One trouble, and how its Session is going. Mirrors `Session` in rules/session.ts. */
+/** One trouble's Session, and how its current round is going. */
 export const Mending = schema(
   {
+    // These mirror `Session` in rules/session.ts.
     thing: t.string().default(""),
     need: t.string().default(""),
     discord: t.number().default(0),
     trust: t.number().default(0),
     needsBand: t.boolean().default(false),
-    mendedBy: t.array("string"),
-    road: t.string().default(""),
-    x: t.number().default(0),
+    playedBy: t.array("string"),
+
+    /** What happened in the last round, in words. */
+    story: t.array("string"),
+    /** Seconds left before the round is played without whoever hasn't chosen. 0 when nobody's waiting. */
+    countdown: t.number().default(0),
   },
   "Mending",
 );

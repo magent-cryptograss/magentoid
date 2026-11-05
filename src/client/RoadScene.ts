@@ -1,10 +1,16 @@
 import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
-import { MOVES } from "../rules/session";
-import { findRoad, junctionFrom, troubleAt, type World } from "../rules/world";
-import type { Mending, Player, WorldState } from "../server/state";
+import { MOVES, isMended, type Move } from "../rules/session";
+import { findRoad, junctionFrom, residentNear, troubleAt, type World } from "../rules/world";
+import type { Player, WorldState } from "../server/state";
+import { Figure, ResidentFigure, stackNames } from "./figures";
+import { GROUND_Y, MAGENTA, SCREEN_H, SCREEN_W, colourFor, lettering } from "./look";
+import { drawBackdrop, drawJunction } from "./scenery";
 import { SessionPanel } from "./SessionPanel";
-import { GROUND_Y, SCREEN_H, SCREEN_W, colourFor, drawBackdrop, drawJunction } from "./scenery";
+import { TroubleDrawing } from "./troubles";
+
+/** The number keys that play each move, in the same order as MOVES. */
+const MOVE_KEYS = ["ONE", "TWO", "THREE", "FOUR"];
 
 /**
  * The road you're standing on, and everyone on it with you.
@@ -14,17 +20,21 @@ import { GROUND_Y, SCREEN_H, SCREEN_W, colourFor, drawBackdrop, drawJunction } f
  * the server a request, and the result shows up in the state a moment later.
  */
 export class RoadScene extends Phaser.Scene {
-  private keys!: Record<"left" | "right" | "up" | "act" | "leave" | "one" | "two" | "three" | "four", Phaser.Input.Keyboard.Key>;
+  private arrows!: Phaser.Types.Input.Keyboard.CursorKeys;
   private panel!: SessionPanel;
   private hint!: Phaser.GameObjects.Text;
+  private toast!: Phaser.GameObjects.Text;
 
   /** The road we last drew, so we know when to draw a new one. */
   private drawnRoad = "";
   private scenery: Phaser.GameObjects.GameObject[] = [];
-  private figures = new Map<string, Phaser.GameObjects.Container>();
-  private troubles = new Map<string, Phaser.GameObjects.Container>();
+  private figures = new Map<string, Figure>();
+  private troubles = new Map<string, TroubleDrawing>();
+  private residents: ResidentFigure[] = [];
   /** The last walking direction we asked for, so we only send changes. */
   private askedToWalk = 0;
+  /** Each trouble's Discord as we last saw it, to notice the moment one is mended. */
+  private lastDiscord = new Map<string, number>();
 
   constructor(
     private readonly room: Room<any, WorldState>,
@@ -35,142 +45,182 @@ export class RoadScene extends Phaser.Scene {
 
   create() {
     const keyboard = this.input.keyboard!;
-    this.keys = {
-      left: keyboard.addKey("LEFT"),
-      right: keyboard.addKey("RIGHT"),
-      up: keyboard.addKey("UP"),
-      act: keyboard.addKey("SPACE"),
-      leave: keyboard.addKey("ESC"),
-      one: keyboard.addKey("ONE"),
-      two: keyboard.addKey("TWO"),
-      three: keyboard.addKey("THREE"),
-      four: keyboard.addKey("FOUR"),
-    };
+    this.arrows = keyboard.createCursorKeys();
+
+    // Each press is handled the moment it happens, by what you're doing right then.
+    this.onPress("UP", () => this.step());
+    this.onPress("DOWN", () => this.step());
+    this.onPress("SPACE", () => this.sitDown());
+    this.onPress("ESC", () => this.getUp());
+    MOVES.forEach((move, i) => this.onPress(MOVE_KEYS[i], () => this.play(move)));
+
+    // If the window loses focus while you hold an arrow, the browser never says
+    // the key came up, and you'd walk on forever. So let go of every key.
+    this.game.events.on(Phaser.Core.Events.BLUR, () => keyboard.resetKeys());
+    this.game.events.on(Phaser.Core.Events.HIDDEN, () => keyboard.resetKeys());
+
     this.panel = new SessionPanel(this);
-    this.hint = this.add
-      .text(SCREEN_W / 2, 510, "", { fontSize: "16px", color: "#f4e8ff" })
+    this.hint = this.add.text(SCREEN_W / 2, 515, "", lettering(17)).setOrigin(0.5).setScrollFactor(0).setDepth(10);
+    this.toast = this.add
+      .text(SCREEN_W / 2, 120, "", lettering(24, { color: MAGENTA, backgroundColor: "#120a1a", padding: { x: 16, y: 10 } }))
       .setOrigin(0.5)
       .setScrollFactor(0)
-      .setDepth(10);
+      .setDepth(11)
+      .setVisible(false);
   }
 
-  update() {
-    const me = this.room.state.players?.get(this.room.sessionId);
+  update(time: number, delta: number) {
+    const me = this.me();
     if (!me) return; // the first state hasn't arrived yet
 
     if (me.road !== this.drawnRoad) this.drawRoad(me.road);
-    this.drawPlayers(me);
-    this.drawTroubles();
-    this.cameras.main.scrollX = me.x - SCREEN_W / 2;
+    this.walk(me);
+    this.drawPlayers(delta);
+    this.drawTroubles(time);
+    for (const resident of this.residents) {
+      resident.heard(residentNear(this.world, me)?.name === resident.name);
+    }
+    stackNames([...this.figures.values(), ...this.residents.map((r) => r.figure)]);
+    this.cameras.main.centerOnX(this.figures.get(this.room.sessionId)?.x ?? me.x);
 
     const mending = me.sittingWith ? this.room.state.mendings.get(me.sittingWith) : undefined;
-    const band = [...this.room.state.players.values()].filter((p) => p.sittingWith && p.sittingWith === me.sittingWith);
-    this.panel.show(mending, band, me);
-
-    if (mending) this.handleSessionKeys(me);
-    else this.handleRoadKeys(me);
+    this.panel.show(mending, this.bandAt(me.sittingWith), me);
+    this.hint.setText(this.hintFor(me));
   }
 
-  private handleRoadKeys(me: Player) {
-    const direction = (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
-    if (direction !== this.askedToWalk) {
-      this.room.send("walk", direction);
-      this.askedToWalk = direction;
-    }
-
-    const here = { road: me.road, x: me.x };
-    const junction = junctionFrom(this.world, here);
-    const trouble = troubleAt(this.world, here);
-    const mended = trouble && this.room.state.mendings.get(trouble.id)!.discord === 0;
-
-    if (junction) this.hint.setText(`↑ step onto ${findRoad(this.world, junction.road).name}`);
-    else if (trouble && !mended) this.hint.setText(`Space: sit down with ${trouble.thing}`);
-    else this.hint.setText("← → to walk");
-
-    if (junction && Phaser.Input.Keyboard.JustDown(this.keys.up)) this.room.send("step");
-    if (trouble && !mended && Phaser.Input.Keyboard.JustDown(this.keys.act)) {
-      this.room.send("sitDown");
-      this.askedToWalk = 0;
-    }
+  private me(): Player | undefined {
+    return this.room.state.players?.get(this.room.sessionId);
   }
 
-  private handleSessionKeys(me: Player) {
-    this.hint.setText(me.move ? "Waiting for the band…" : "Choose your move");
-    const numberKeys = [this.keys.one, this.keys.two, this.keys.three, this.keys.four];
-    numberKeys.forEach((key, i) => {
-      if (Phaser.Input.Keyboard.JustDown(key)) this.room.send("play", MOVES[i]);
+  /** Call `action` when `key` goes down, but not again while it's held. */
+  private onPress(key: string, action: () => void) {
+    this.input.keyboard!.on(`keydown-${key}`, (event: KeyboardEvent) => {
+      if (!event.repeat) action();
     });
-    if (Phaser.Input.Keyboard.JustDown(this.keys.leave)) this.room.send("getUp");
   }
 
-  /** Clear the old road and draw the new one: backdrop, junction signs, troubles. */
+  /** Walking is held, not pressed, so it's read every frame. We only tell the server when it changes. */
+  private walk(me: Player) {
+    const held = (this.arrows.right.isDown ? 1 : 0) - (this.arrows.left.isDown ? 1 : 0);
+    // Sitting down, you're not walking, whatever you hold. Get up still holding an arrow, and off you go.
+    const direction = me.sittingWith ? 0 : held;
+    if (direction === this.askedToWalk) return;
+    this.room.send("walk", direction);
+    this.askedToWalk = direction;
+  }
+
+  private step() {
+    const me = this.me();
+    if (me && !me.sittingWith && junctionFrom(this.world, me)) this.room.send("step");
+  }
+
+  private sitDown() {
+    const me = this.me();
+    const trouble = me && !me.sittingWith ? troubleAt(this.world, me) : undefined;
+    if (!trouble || isMended(this.room.state.mendings.get(trouble.id)!)) return;
+    this.room.send("sitDown");
+  }
+
+  private play(move: Move) {
+    if (this.me()?.sittingWith) this.room.send("play", move);
+  }
+
+  private getUp() {
+    if (this.me()?.sittingWith) this.room.send("getUp");
+  }
+
+  /** The line at the bottom of the screen: what you can do right where you are. */
+  private hintFor(me: Player): string {
+    if (me.sittingWith) return me.move ? "Waiting for the band…" : "Choose your move: 1, 2, 3 or 4";
+    const junction = junctionFrom(this.world, me);
+    if (junction) return `↑ step onto ${findRoad(this.world, junction.road).name}`;
+    const trouble = troubleAt(this.world, me);
+    if (trouble && !isMended(this.room.state.mendings.get(trouble.id)!)) return `Space: sit down with ${trouble.thing}`;
+    if (trouble) return "This one's mended.";
+    return "← → to walk";
+  }
+
+  /** Clear the old road and draw the new one: backdrop, junctions, troubles, residents. */
   private drawRoad(roadId: string) {
-    for (const thing of [...this.scenery, ...this.figures.values(), ...this.troubles.values()]) thing.destroy();
+    for (const thing of this.scenery) thing.destroy();
+    for (const drawing of [...this.figures.values(), ...this.troubles.values(), ...this.residents]) drawing.destroy();
     this.figures.clear();
     this.troubles.clear();
 
     const road = findRoad(this.world, roadId);
-    this.scenery = drawBackdrop(this, road.id, road.length);
+    this.scenery = drawBackdrop(this, road);
     // Keep the camera on the road: at either end, you walk toward the edge of the screen.
     this.cameras.main.setBounds(0, 0, road.length, SCREEN_H);
+
     for (const { a, b } of this.world.junctions) {
       if (a.road === roadId) this.scenery.push(...drawJunction(this, a.x, findRoad(this.world, b.road).name));
       if (b.road === roadId) this.scenery.push(...drawJunction(this, b.x, findRoad(this.world, a.road).name));
     }
-    this.scenery.push(this.add.text(40, GROUND_Y + 30, road.name, { fontSize: "28px", color: "#ff67fd" }));
+    for (const trouble of this.world.troubles) {
+      if (trouble.at.road === roadId) this.troubles.set(trouble.id, new TroubleDrawing(this, trouble));
+    }
+    this.residents = this.world.residents.filter((r) => r.at.road === roadId).map((r) => new ResidentFigure(this, r));
+    this.scenery.push(this.add.text(30, GROUND_Y + 40, road.name, lettering(28, { color: MAGENTA })));
     this.drawnRoad = roadId;
   }
 
-  /** Everyone on this road: add new arrivals, move everyone, remove anyone who left. */
-  private drawPlayers(me: Player) {
+  /** Everyone on this road: add new arrivals, ease everyone toward where they are, remove anyone who left. */
+  private drawPlayers(delta: number) {
     const here = new Set<string>();
     this.room.state.players.forEach((player, id) => {
-      if (player.road !== me.road) return;
+      if (player.road !== this.drawnRoad) return;
       here.add(id);
       const figure = this.figures.get(id) ?? this.addFigure(id, player);
-      figure.x = player.x;
+      figure.easeToward(this.whereToDraw(player), delta);
     });
     for (const [id, figure] of this.figures) {
-      if (!here.has(id)) {
-        figure.destroy();
-        this.figures.delete(id);
-      }
+      if (here.has(id)) continue;
+      figure.destroy();
+      this.figures.delete(id);
     }
   }
 
-  /** A person: a body, a head and a name, all flat shapes. */
-  private addFigure(id: string, player: Player): Phaser.GameObjects.Container {
-    const colour = colourFor(player.name);
-    const figure = this.add.container(player.x, GROUND_Y, [
-      this.add.triangle(0, -30, -14, 30, 14, 30, 0, -10, colour),
-      this.add.circle(0, -52, 10, colour),
-      this.add.text(0, -80, player.name, { fontSize: "14px", color: "#f4e8ff" }).setOrigin(0.5),
-    ]);
-    figure.setDepth(5);
+  private addFigure(id: string, player: Player): Figure {
+    const figure = new Figure(this, player.name, colourFor(player.name), player.x);
     this.figures.set(id, figure);
     return figure;
   }
 
-  private drawTroubles() {
+  /** Where to draw a player: where they stand, or, if they're sitting with something, in their seat around it. */
+  private whereToDraw(player: Player): number {
+    const trouble = this.world.troubles.find((t) => t.id === player.sittingWith);
+    if (!trouble) return player.x;
+    const seat = this.bandAt(player.sittingWith).map((p) => p.name).sort().indexOf(player.name);
+    return trouble.at.x + seatOffset(seat);
+  }
+
+  private bandAt(troubleId: string): Player[] {
+    if (!troubleId) return [];
+    return [...this.room.state.players.values()].filter((p) => p.sittingWith === troubleId);
+  }
+
+  private drawTroubles(time: number) {
     this.room.state.mendings.forEach((mending, id) => {
-      if (mending.road !== this.drawnRoad) return;
-      const drawing = this.troubles.get(id) ?? this.addTrouble(id, mending);
-      const label = drawing.getAt(drawing.length - 1) as Phaser.GameObjects.Text;
-      label.setText(mending.discord === 0 ? `mended by ${mending.mendedBy.join(", ")}` : mending.thing);
-      drawing.setAlpha(mending.discord === 0 ? 1 : 0.6 + 0.4 * Math.abs(Math.sin(this.time.now / 300)));
+      this.troubles.get(id)?.show(mending, time);
+      const before = this.lastDiscord.get(id);
+      if (before !== undefined && before > 0 && isMended(mending) && this.troubles.has(id)) {
+        this.say(`Mended! Played on by ${mending.playedBy.join(", ")}.`);
+      }
+      this.lastDiscord.set(id, mending.discord);
     });
   }
 
-  /** A fiddle: two ellipses for the body, a neck, and a label underneath. */
-  private addTrouble(id: string, mending: Mending): Phaser.GameObjects.Container {
-    const wood = 0xc0773a;
-    const drawing = this.add.container(mending.x, GROUND_Y - 40, [
-      this.add.ellipse(0, 10, 34, 26, wood),
-      this.add.ellipse(0, -10, 28, 22, wood),
-      this.add.rectangle(0, -40, 6, 40, 0x3a2414),
-      this.add.text(0, 60, "", { fontSize: "14px", color: "#f4e8ff" }).setOrigin(0.5),
-    ]);
-    this.troubles.set(id, drawing);
-    return drawing;
+  /** Show a message in the middle of the screen for a few seconds. */
+  private say(message: string) {
+    this.toast.setText(message).setVisible(true).setAlpha(1);
+    this.tweens.killTweensOf(this.toast);
+    this.tweens.add({ targets: this.toast, alpha: 0, delay: 3500, duration: 800 });
   }
+}
+
+/** Seats around a trouble: left of it, right of it, then further out on each side. */
+function seatOffset(seat: number): number {
+  const side = seat % 2 === 0 ? -1 : 1;
+  const row = Math.floor(seat / 2);
+  return side * (70 + row * 50);
 }

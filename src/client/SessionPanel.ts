@@ -1,15 +1,18 @@
 import Phaser from "phaser";
-import { HEARD_AT, MOVES, type Move } from "../rules/session";
+import { MOVES, isNeedHeard, type Move } from "../rules/session";
 import type { Mending, Player } from "../server/state";
-import { SCREEN_W } from "./scenery";
+import { MAGENTA, SCREEN_W, lettering } from "./look";
 
-/** What each move is called on screen, and the key that plays it. */
+/** What each move is called on screen, with the key that plays it. */
 const LABELS: Record<Move, string> = {
-  listen: "1  Listen",
-  tune: "2  Tune",
-  backUp: "3  Back up",
-  takeBreak: "4  Take a break",
+  listen: "1 Listen",
+  tune: "2 Tune",
+  backUp: "3 Back up",
+  takeBreak: "4 Take a break",
 };
+
+const WIDTH = 600;
+const HEIGHT = 330;
 
 /**
  * The panel you see while you're sitting with a trouble, the way a battle
@@ -19,33 +22,33 @@ const LABELS: Record<Move, string> = {
 export class SessionPanel {
   private readonly box: Phaser.GameObjects.Container;
   private readonly title: Phaser.GameObjects.Text;
-  private readonly discordBar: Phaser.GameObjects.Rectangle;
-  private readonly trustBar: Phaser.GameObjects.Rectangle;
+  private readonly discord: Meter;
+  private readonly trust: Meter;
   private readonly need: Phaser.GameObjects.Text;
   private readonly band: Phaser.GameObjects.Text;
+  private readonly story: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene) {
-    const width = 560;
-    const text = (y: number, size = 16) =>
-      scene.add.text(20, y, "", { fontSize: `${size}px`, color: "#f4e8ff", wordWrap: { width: width - 40 } });
+    const text = (y: number, size = 16) => scene.add.text(20, y, "", lettering(size, { wordWrap: { width: WIDTH - 40 } }));
 
-    this.title = text(14, 20);
-    this.discordBar = scene.add.rectangle(120, 56, 0, 14, 0xff5d5d).setOrigin(0);
-    this.trustBar = scene.add.rectangle(120, 80, 0, 14, 0x67d1ff).setOrigin(0);
-    this.need = text(104);
+    this.title = text(14, 21);
+    this.discord = new Meter(scene, 50, "Discord", 0xff6b6b);
+    this.trust = new Meter(scene, 74, "Trust", 0x67d1ff);
+    this.need = text(102);
     this.band = text(136);
+    this.story = text(190, 15).setColor("#d8c8e8");
+    const keys = text(296, 15).setText(`${MOVES.map((m) => LABELS[m]).join("    ")}    Esc Set it down`).setColor(MAGENTA);
 
     this.box = scene.add
-      .container((SCREEN_W - width) / 2, 20, [
-        scene.add.rectangle(0, 0, width, 260, 0x120a1a, 0.92).setOrigin(0).setStrokeStyle(2, 0xff67fd),
+      .container((SCREEN_W - WIDTH) / 2, 16, [
+        scene.add.rectangle(0, 0, WIDTH, HEIGHT, 0x120a1a, 0.94).setOrigin(0).setStrokeStyle(2, 0xff67fd),
         this.title,
-        text(52).setText("Discord"),
-        text(76).setText("Trust"),
-        this.discordBar,
-        this.trustBar,
+        ...this.discord.parts,
+        ...this.trust.parts,
         this.need,
         this.band,
-        text(204).setText(MOVES.map((m) => LABELS[m]).join("    ") + "\nEsc  Set it down"),
+        this.story,
+        keys,
       ])
       .setScrollFactor(0)
       .setDepth(10)
@@ -58,14 +61,39 @@ export class SessionPanel {
     if (!mending) return;
 
     this.title.setText(mending.thing);
-    this.discordBar.width = mending.discord * 4;
-    this.trustBar.width = mending.trust * 4;
-    this.need.setText(
-      mending.trust >= HEARD_AT ? `It needs you to ${mending.need}.` : "Listen to it, to hear what it needs.",
-    );
+    this.discord.show(mending.discord);
+    this.trust.show(mending.trust);
+    this.need.setText(isNeedHeard(mending) ? `It needs you to ${mending.need}.` : "Listen to it, to learn what it needs.");
 
-    const lines = band.map((p) => `${p === me ? "you" : p.name}: ${p.move ? "ready" : "choosing…"}`);
-    if (mending.needsBand && band.length < 2) lines.push("This one needs a band. You can steady it alone, not finish it.");
+    const who = band.map((p) => `${p === me ? "you" : p.name}: ${p.move ? "ready" : "choosing…"}`).join("   ");
+    const lines = [who];
+    if (mending.countdown > 0) lines.push(`The round starts in ${Math.ceil(mending.countdown)}s, with whoever's ready.`);
+    if (mending.needsBand && band.length < 2) lines.push("This one needs a band. Alone, you can steady it, not finish it.");
     this.band.setText(lines.join("\n"));
+
+    this.story.setText(mending.story.length > 0 ? `Last round: ${mending.story.join(" ")}` : "");
+  }
+}
+
+/** A labelled bar with its number beside it: a dim track, filled in to the value out of 100. */
+class Meter {
+  readonly parts: Phaser.GameObjects.GameObject[];
+  private readonly fill: Phaser.GameObjects.Rectangle;
+  private readonly number: Phaser.GameObjects.Text;
+
+  constructor(scene: Phaser.Scene, y: number, name: string, colour: number) {
+    this.fill = scene.add.rectangle(110, y + 3, 0, 14, colour).setOrigin(0);
+    this.number = scene.add.text(530, y, "", lettering(15));
+    this.parts = [
+      scene.add.text(20, y, name, lettering(16)),
+      scene.add.rectangle(110, y + 3, 400, 14, colour, 0.18).setOrigin(0),
+      this.fill,
+      this.number,
+    ];
+  }
+
+  show(value: number) {
+    this.fill.width = value * 4;
+    this.number.setText(`${value}`);
   }
 }

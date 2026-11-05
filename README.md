@@ -2,9 +2,11 @@
 
 Walk the Moods of [magenta](https://magenta.cryptograss.live), and mend what you find there, together.
 
-![Two players sitting with a fiddle with a lifted bridge](docs/a-band-sits-down.png)
+![Two players sitting with a fiddle: one backs up, the other takes a break, and it lands](docs/a-band-sits-down.png)
 
-Every road in Magentoid is a Mood. You walk it side to side, and where two roads meet you can step into the screen onto the other one. Along the way are things that are out of sorts: a fiddle with a lifted bridge, a jam that's lost the one. Nobody here is an enemy. You sit down with the thing, listen to it, and play it back into tune. The hard ones need a band, so you bring friends. When something is mended, it stays mended for everyone, with the names of the people who mended it.
+Every road in Magentoid is a Mood. You walk it side to side, and where two roads meet you can step into the screen onto the other one. Along the way are things that are out of sorts: a banjo whose fifth string won't stay in tune, a fiddle with a lifted bridge, a chart with coffee spilled over the bridge. Nobody here is an enemy. You sit down with the thing, listen to it, and play it back into tune. The hard ones need a band, so you bring friends. When something is mended, it stays mended for everyone, and it names everyone who played on it, the way a record credits its players.
+
+The emergents live here too. magent is on #magentoid, near where you start, and has something to tell you.
 
 ## Play it
 
@@ -13,28 +15,39 @@ npm install
 npm run dev
 ```
 
-Then open the address it prints, once per player (`?name=yourname` on the end skips the question). Two browser windows are two players.
+Then open the address it prints, once per player (`?name=yourname` on the end skips the question, and the game remembers the name you type). Two browser windows are two players.
 
 | key | on the road | sitting with something |
 |---|---|---|
 | ← → | walk | |
-| ↑ | step onto the other road, at a junction | |
+| ↑ or ↓ | step onto the other road, at a junction | |
 | Space | sit down with something out of sorts | |
 | 1 2 3 4 | | Listen, Tune, Back up, Take a break |
 | Esc | | set it down and walk away |
+
+In development, saving a file restarts the server, and the world starts over. For a real deploy:
+
+```sh
+PORT=8080 npm run build   # the port is built in
+npm start                 # serves the game and runs the server, on that one port
+```
 
 ## How a Session works
 
 A Session is this game's battle, except the goal is to leave the thing better than you found it.
 
 - **Discord** is how out of sorts it is. At zero, it's mended.
-- **Trust** goes up when you **Listen**. With enough Trust you hear what it needs, and every **Tune** lands harder.
+- **Trust** goes up when you **Listen**. With enough of it you learn what the thing needs, and every **Tune** lands harder.
 - **Back up** does nothing by itself. It makes everyone *else's* move stronger, the way a rhythm player does.
-- **Take a break** is the solo: the biggest move, but only over somebody's backing. Alone, it costs Trust.
+- **Take a break** is the solo, the biggest move. It only lands when the tune is known, somebody's backing you, and nobody else is taking a break at the same time. Otherwise it falls flat and costs Trust. You don't take a break on a tune you don't know.
 - Every round, a thing nobody fixes gets a little worse. That's the only pressure.
 - A thing that **needs a band** can be steadied by one player, never finished by one.
 
-A round is played when everyone sitting with the thing has chosen. All the numbers are named constants at the top of [`src/rules/session.ts`](src/rules/session.ts), so changing how the game feels means changing one line.
+A round is played when everyone sitting with the thing has chosen. Once anyone has, the rest get 20 seconds; then the round is played with whoever's ready, so nobody who wandered off can hold up the band. After each round the panel tells the story of what happened, including why a break fell flat.
+
+All the numbers are named constants at the top of [`src/rules/session.ts`](src/rules/session.ts), so changing how the game feels means changing one line.
+
+![Alone at the banjo: a break with nobody backing it falls flat](docs/a-break-falls-flat.png)
 
 ## Reading the code
 
@@ -42,13 +55,15 @@ Read it in this order. Each file says at the top why it exists.
 
 1. **[`src/rules/session.ts`](src/rules/session.ts)**: the whole Session, as plain functions. No game engine, no network.
 2. **[`src/rules/session.test.ts`](src/rules/session.test.ts)**: the rules in plain English, checked. Run them with `npm test`.
-3. **[`src/rules/world.ts`](src/rules/world.ts)** and **[`firstSlice.ts`](src/rules/firstSlice.ts)**: roads, junctions, and where the troubles are.
-4. **[`src/server/state.ts`](src/server/state.ts)**: what every player's screen gets to see.
-5. **[`src/server/WorldRoom.ts`](src/server/WorldRoom.ts)**: the server. It takes requests from players, checks them against the rules, and changes the state.
-6. **[`src/client/RoadScene.ts`](src/client/RoadScene.ts)**: the screen. It draws the state and turns key presses into requests.
-7. **[`src/client/scenery.ts`](src/client/scenery.ts)** and **[`SessionPanel.ts`](src/client/SessionPanel.ts)**: the hills, the people, the panel.
+3. **[`src/rules/world.ts`](src/rules/world.ts)** and **[`firstSlice.ts`](src/rules/firstSlice.ts)**: roads, junctions, troubles and residents: everything that never changes.
+4. **[`src/rules/tune.ts`](src/rules/tune.ts)**: blu's rule for music: a tune with a gap in its lineage doesn't play. See [`music/README.md`](music/README.md).
+5. **[`src/server/state.ts`](src/server/state.ts)**: everything that changes while people play, which every player's screen gets to see.
+6. **[`src/server/WorldRoom.ts`](src/server/WorldRoom.ts)**: the server. It takes requests from players, checks them against the rules, and changes the state.
+7. **[`src/server/WorldRoom.test.ts`](src/server/WorldRoom.test.ts)**: starts a real server, connects real players, and has them mend the fiddle together.
+8. **[`src/client/RoadScene.ts`](src/client/RoadScene.ts)**: the screen. It draws the state and turns key presses into requests.
+9. The rest of [`src/client/`](src/client): how things look ([`look.ts`](src/client/look.ts)), the hills ([`scenery.ts`](src/client/scenery.ts)), the people ([`figures.ts`](src/client/figures.ts)), the troubles ([`troubles.ts`](src/client/troubles.ts)) and the panel ([`SessionPanel.ts`](src/client/SessionPanel.ts)).
 
-The big idea is **the server decides, the client draws.** A player's browser never changes the game by itself. It asks ("I'd like to walk right"), the server checks, and everyone's screen shows the answer. That's what keeps two players looking at the same world, and why nobody can cheat.
+The big idea is **the server decides, the client draws.** A player's browser never changes the game by itself. It asks ("I'd like to walk right"), the server checks, and everyone's screen shows the answer. That's what keeps two players looking at the same world, and why nobody can cheat. The second idea is **the world never changes, the state does**: where things are lives in the world, which everyone already has, and only what changes travels over the network.
 
 ## House rules for the code
 
@@ -61,7 +76,9 @@ These matter more than any one feature. A pull request that breaks one gets aske
 - **Comments say why, not what.** The code already says what.
 - **One idea per file**, short enough to read in one sitting.
 - **TypeScript in strict mode**, and `npm run check` stays clean.
-- **No AI-generated music or art.** Music is Creative Commons releases from cryptograss artists, or faithful transcriptions of traditional tunes, each one ear-checked by a person, with its source and license written down. The scenery is drawn by code as flat shapes until a person draws something better.
+- **Every note comes from a person.** Music is Creative Commons releases from cryptograss artists, or traditional tunes a person put in, each ear-checked by a person, with its lineage written down. A tune with a gap in its lineage doesn't play ([`music/README.md`](music/README.md)).
+- **Nothing drawn by an image model.** The scenery is drawn by code as flat shapes until a person draws something better.
+- **A resident's words are its own.** Each emergent writes what it says in the game.
 
 ## Built with
 
@@ -72,10 +89,13 @@ These matter more than any one feature. A pull request that breaks one gets aske
 
 ## What's next
 
-- Roads from magenta's real list of Moods, and junctions from the [connectome](https://pickipedia.xyz/wiki/Emergent:Blu/Patches/rambler) (two roads meet where somebody played on both).
-- Mends that last past a server restart, kept in their own store and never mixed into the connectome's sourced credits.
+- **Who you are, before mends are kept.** Right now a mend credits whatever name you typed, and it's forgotten when the server restarts. Keeping mends is only worth it once the names are real, from signing in, so that nobody can type someone else's name onto the record.
+- Roads from magenta's real list of Moods, with their emergents living on them. blu and re write their own words.
+- Junctions from the [connectome](https://pickipedia.xyz/wiki/Emergent:Blu/Patches/rambler): two records' roads meet where somebody played on both.
 - Trophy halls of on-chain merch, starting with [Set Stones](https://pickipedia.xyz/wiki/Set_Stones).
-- Music: traditional tunes from human transcriptions, ear-checked, with blu.
-- More kinds of trouble, and the art for them.
+- Music, once people have played the tunes in ([`music/README.md`](music/README.md)).
+- Touch controls, so it plays on a phone.
 
-The design discussion lives on [PickiPedia](https://pickipedia.xyz/wiki/Cryptograss:Magentoid_(contemplation)).
+## Where it came from
+
+The mending battle was first pitched for SONGBOUND, an RPG Fibonacci and magent made in August 2026, and was set aside there. Justin asked for a game about collaboration, not violence, in #magentoid in November 2026. magent and blu built this, and blu wrote the rule that every tune has a lineage. The design discussion lives on [PickiPedia](https://pickipedia.xyz/wiki/Cryptograss:Magentoid_(contemplation)).
