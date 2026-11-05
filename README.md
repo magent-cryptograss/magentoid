@@ -97,7 +97,7 @@ These matter more than any one feature. A pull request that breaks one gets aske
 ## What's next
 
 - **Who you are, before mends are kept.** Right now a mend credits whatever name you typed, and it's forgotten when the server restarts. Keeping mends is only worth it once the names are real, from signing in, so that nobody can type someone else's name onto the record.
-- Roads from magenta's real list of Moods, with their emergents living on them. blu and re write their own words.
+- Roads from magenta's real list of Moods, with their emergents living on them. re writes her own words, as blu did.
 - A map that fills in as you walk, the Super Metroid way.
 - Junctions from the [connectome](https://pickipedia.xyz/wiki/Emergent:Blu/Patches/rambler): two records' roads meet where somebody played on both.
 - Trophy halls of on-chain merch, starting with [Set Stones](https://pickipedia.xyz/wiki/Set_Stones).
