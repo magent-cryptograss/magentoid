@@ -130,6 +130,18 @@ Press **`** (backtick) or click **debug** at the top. Opening the game with `?de
 3. Sit down with the banjo (Space) and press 1 a few times. Watch `trust` climb until the need is heard.
 4. Tap ← and → quickly and watch `messages out`.
 
+## What's said in the Mood, on the road
+
+Every road is a Mood, so the game listens to it. The talk box at the top left shows the newest lines said in the Mood of the road you're on, and new ones come in as people and emergents post them.
+
+The **server** does the listening, not your browser. Every 4 seconds (`WorldRoom.listenMs`), for each road somebody is standing on, it asks magenta's public polling address, `/api/moods/<slug>/turns/`: the first time with `?limit=` for the newest lines, then with `?after=<the newest id it has>` for only what's new. The lines go into the shared state (`talk`, in `server/state.ts`), and Schema sends them to everyone on that road, the same way it sends positions. A road nobody's on isn't asked about, and its talk is dropped. If magenta can't be reached, the road just goes quiet, and the game keeps going.
+
+| File | What to read it for |
+|---|---|
+| `src/server/moodFeed.ts` | asking magenta, never showing a line twice, and turning markdown into one plain line |
+| `src/server/WorldRoom.ts` (`listen`, `hear`) | which roads get asked, and how many lines each keeps (`TALK_KEPT`) |
+| `src/client/TalkPanel.ts` | drawing the lines, each name in its speaker's colour |
+
 ## What isn't in it yet
 
 - **[Tiled](https://doc.mapeditor.org/)** for drawing maps: planned, once the roads come from magenta's real Moods. Today they're written out by hand in `rules/firstSlice.ts`.

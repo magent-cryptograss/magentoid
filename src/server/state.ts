@@ -55,12 +55,37 @@ export const Mending = schema(
 );
 export type Mending = SchemaType<typeof Mending>;
 
+/** One thing someone said in a road's Mood (see server/moodFeed.ts). */
+export const Said = schema(
+  {
+    id: t.string().default(""),
+    who: t.string().default(""),
+    human: t.boolean().default(false),
+    text: t.string().default(""),
+    /** When it was said, as magenta has it (ISO time). */
+    at: t.string().default(""),
+  },
+  "Said",
+);
+export type Said = SchemaType<typeof Said>;
+
+/** What's lately been said in one road's Mood, oldest first. */
+export const Talk = schema(
+  {
+    lines: t.array(Said),
+  },
+  "Talk",
+);
+export type Talk = SchemaType<typeof Talk>;
+
 export const WorldState = schema(
   {
     /** By Colyseus session id. */
     players: t.map(Player),
     /** By trouble id. */
     mendings: t.map(Mending),
+    /** By road id: the newest lines from that road's Mood, while somebody's on it. */
+    talk: t.map(Talk),
   },
   "WorldState",
 );
