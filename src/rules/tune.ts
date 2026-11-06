@@ -41,7 +41,7 @@ export const EMERGENTS: readonly string[] = ["magent", "re", "blu"];
  * If one of these changes its terms, the reason here is where to start.
  *
  * The Session isn't here. Its license bars processing its tunes with an LLM,
- * and nothing here does: a person fetches the ABC and runs Tunesmith
+ * and nothing here does: a person fetches the ABC and runs Taper
  * (pickipedia/tools), an Artificial Dumb that converts it without reading it,
  * and `notesBy` and `earCheckedBy` already refuse an emergent's name.
  * Justin, #connectome, block 26,349,551.
