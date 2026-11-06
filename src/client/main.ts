@@ -39,7 +39,7 @@ const room = await client.joinOrCreate("world", { name: yourName() }, WorldState
 
 room.onLeave(() => sayOnPage("Lost the connection to the server. Reload the page to come back."));
 
-new Phaser.Game({
+const game = new Phaser.Game({
   type: Phaser.AUTO,
   width: SCREEN_W,
   height: SCREEN_H,
@@ -48,3 +48,12 @@ new Phaser.Game({
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: new RoadScene(room, firstSlice),
 });
+
+// Phaser fits the game to its space when the window is resized, but not when
+// the space changes inside the page (opening the debug panel beside it).
+// Watching the space itself catches both. refresh() fits the game to the size
+// Phaser last measured, so it measures first.
+new ResizeObserver(() => {
+  game.scale.getParentBounds();
+  game.scale.refresh();
+}).observe(document.getElementById("game")!);

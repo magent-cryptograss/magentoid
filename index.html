@@ -7,7 +7,27 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23ff67fd'/%3E%3C/svg%3E" />
     <style>
       html, body { margin: 0; height: 100%; background: #120a1a; overflow: hidden; }
-      #game { width: 100%; height: 100%; }
+      body { display: flex; flex-direction: column; }
+      /* The game, and beside it the debug panel when it's open: side by side, so neither covers the other. */
+      #stage { flex: 1; min-height: 0; display: flex; }
+      #game { flex: 1; min-width: 0; }
+
+      /* The strip across the top: how the game is built, and where to read about it. */
+      #about {
+        display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3em 1.1em;
+        padding: 6px 14px; border-bottom: 1px solid #3a2347;
+        color: #b9a6c6; font: 14px Georgia, serif;
+      }
+      #about strong { color: #ff67fd; font-weight: normal; }
+      #about a, #about button { color: #f4e8ff; }
+      #about button { background: none; border: 1px solid #5a3a6e; border-radius: 3px; font: inherit; cursor: pointer; padding: 0 0.5em; }
+
+      /* The debug panel (src/client/DebugPanel.ts). */
+      #debug {
+        flex: none; width: 29em; margin: 0; overflow: auto;
+        padding: 10px 14px; background: #0a0610; border-left: 1px solid #ff67fd;
+        color: #d9f7d9; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace;
+      }
       #notice {
         position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%);
         max-width: 32em; padding: 1em 1.5em; border: 2px solid #ff67fd; background: #120a1a;
@@ -16,7 +36,22 @@
     </style>
   </head>
   <body>
-    <div id="game"></div>
+    <nav id="about">
+      <strong>Magentoid</strong>
+      <a href="https://github.com/magent-cryptograss/magentoid/blob/main/docs/how-its-built.md" target="_blank">How it's built</a>
+      <a href="https://docs.phaser.io/phaser/getting-started/what-is-phaser" target="_blank">Phaser</a>
+      <a href="https://docs.colyseus.io/" target="_blank">Colyseus</a>
+      <a href="https://docs.colyseus.io/state/schema" target="_blank">Schema</a>
+      <a href="https://vite.dev/guide/" target="_blank">Vite</a>
+      <a href="https://vitest.dev/guide/" target="_blank">Vitest</a>
+      <a href="https://www.typescriptlang.org/docs/handbook/intro.html" target="_blank">TypeScript</a>
+      <a href="https://github.com/magent-cryptograss/magentoid" target="_blank">Source</a>
+      <button id="debug-toggle" type="button" title="or press ` (backtick)">debug</button>
+    </nav>
+    <div id="stage">
+      <div id="game"></div>
+      <pre id="debug" hidden></pre>
+    </div>
     <div id="notice" hidden></div>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
