@@ -3,7 +3,8 @@ import { firstSlice } from "../rules/firstSlice";
 import { MOVES, isMended, isNeedHeard, playRound, startSession, type Move, type Session } from "../rules/session";
 import { findTrouble, isOpen, junctionFrom, seatFor, troubleAt, walk, type Trouble } from "../rules/world";
 import { NEEDS } from "./needs";
-import { Mending, Player, WorldState } from "./state";
+import { MoodFeed, readFromMagenta, type ReadTurns } from "./moodFeed";
+import { Mending, Player, Said, Talk, WorldState } from "./state";
 
 const world = firstSlice;
 
@@ -16,6 +17,9 @@ const TICK_MS = 50;
  * and Colyseus disconnects it.
  */
 const MAX_MESSAGES_PER_SECOND = 30;
+
+/** How many lines of a Mood's talk each road keeps. */
+export const TALK_KEPT = 6;
 
 /**
  * One shared world that everyone walks around in together.
@@ -32,6 +36,15 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    */
   static roundSeconds = 20;
 
+  /** How often to ask magenta what's new on each road somebody's on, in milliseconds. (Tests shorten it.) */
+  static listenMs = 4000;
+  /** How a road's Mood is read. (Tests hand in their own.) */
+  static readTurns: ReadTurns = readFromMagenta;
+
+  private feed = new MoodFeed(WorldRoom.readTurns);
+  /** True while a round of asking is still out, so a slow magenta never gets asked twice at once. */
+  private listening = false;
+
   state = new WorldState();
   maxMessagesPerSecond = MAX_MESSAGES_PER_SECOND;
 
@@ -43,6 +56,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
 
     this.setTimestep((ms) => this.tick(ms / 1000), TICK_MS);
+    this.clock.setInterval(() => void this.listen(), WorldRoom.listenMs);
 
     this.onMessage("walk", (client, direction: unknown) => {
       const player = this.playerOf(client);
@@ -58,6 +72,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (!crossing || !isOpen(crossing, (id) => this.isMendedNow(id))) return;
       player.road = crossing.leadsTo.road;
       player.x = crossing.leadsTo.x;
+      if (!this.state.talk.has(player.road)) void this.listen();
     });
 
     this.onMessage("sitDown", (client) => {
@@ -95,12 +110,51 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // New arrivals stand a little apart, so nobody appears on top of anybody else.
     player.x = world.start.x + (this.state.players.size % 5) * 40;
     this.state.players.set(client.sessionId, player);
+    // Don't make a new arrival wait for the next round of listening to hear anything.
+    if (!this.state.talk.has(player.road)) void this.listen();
   }
 
   onLeave(client: Client) {
     const troubleId = this.playerOf(client).sittingWith;
     this.state.players.delete(client.sessionId);
     if (troubleId) this.checkRound(troubleId);
+  }
+
+  /**
+   * Ask each road's Mood what's new, for every road somebody is standing on.
+   * A road nobody's on isn't asked about, and its talk is let go: whoever
+   * comes next gets the newest lines then, not what was said while it was empty.
+   */
+  private async listen() {
+    if (this.listening) return;
+    this.listening = true;
+    try {
+      const occupied = new Set([...this.state.players.values()].map((p) => p.road));
+      for (const road of [...this.state.talk.keys()]) {
+        if (!occupied.has(road)) {
+          this.state.talk.delete(road);
+          this.feed.forget(road);
+        }
+      }
+      await Promise.all([...occupied].map((road) => this.hear(road)));
+    } finally {
+      this.listening = false;
+    }
+  }
+
+  private async hear(road: string) {
+    let lines;
+    try {
+      lines = await this.feed.newLines(road);
+    } catch (error) {
+      // magenta being down or slow isn't the game's problem: the road just stays quiet, and we ask again.
+      console.warn(`listening to #${road}:`, (error as Error).message);
+      return;
+    }
+    const talk = this.state.talk.get(road) ?? new Talk();
+    if (!this.state.talk.has(road)) this.state.talk.set(road, talk);
+    for (const line of lines) talk.lines.push(Object.assign(new Said(), line));
+    while (talk.lines.length > TALK_KEPT) talk.lines.shift();
   }
 
   private tick(seconds: number) {

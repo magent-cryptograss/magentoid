@@ -9,6 +9,7 @@ import { JunctionDrawing, drawBackdrop } from "./scenery";
 import { SessionPanel } from "./SessionPanel";
 import { TroubleDrawing } from "./troubles";
 import { DebugPanel } from "./DebugPanel";
+import { TalkPanel } from "./TalkPanel";
 
 /** The number keys that play each move, in the same order as MOVES. */
 const MOVE_KEYS = ["ONE", "TWO", "THREE", "FOUR"];
@@ -26,6 +27,7 @@ export class RoadScene extends Phaser.Scene {
   private hint!: Phaser.GameObjects.Text;
   private toast!: Phaser.GameObjects.Text;
   private debug!: DebugPanel;
+  private talk!: TalkPanel;
 
   /** The road we last drew, so we know when to draw a new one. */
   private drawnRoad = "";
@@ -65,6 +67,7 @@ export class RoadScene extends Phaser.Scene {
 
     this.debug = new DebugPanel(this.room, this.world, this.game);
     this.panel = new SessionPanel(this);
+    this.talk = new TalkPanel(this, this.world);
     this.hint = this.add.text(SCREEN_W / 2, 515, "", lettering(17)).setOrigin(0.5).setScrollFactor(0).setDepth(10);
     this.toast = this.add
       .text(SCREEN_W / 2, 120, "", lettering(24, { color: MAGENTA, backgroundColor: "#120a1a", padding: { x: 16, y: 10 }, align: "center" }))
@@ -92,6 +95,7 @@ export class RoadScene extends Phaser.Scene {
     const trouble = me.sittingWith ? findTrouble(this.world, me.sittingWith) : undefined;
     const mending = trouble ? this.room.state.mendings.get(trouble.id) : undefined;
     this.panel.show(trouble, mending, this.bandAt(me.sittingWith), me);
+    this.talk.show(me.road, this.room.state.talk?.get(me.road), !!me.sittingWith);
     this.hint.setText(this.hintFor(me));
     this.debug.update({
       me,

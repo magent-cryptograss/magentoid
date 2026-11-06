@@ -23,6 +23,9 @@ afterAll(async () => {
 beforeEach(async () => {
   await colyseus.cleanup();
   WorldRoom.roundSeconds = 20;
+  // The tests never ask the real magenta: every road's Mood is quiet unless a test says otherwise.
+  WorldRoom.readTurns = async () => [];
+  WorldRoom.listenMs = 4000;
 });
 
 const fiddle = firstSlice.troubles.find((t) => t.id === "lifted-bridge")!;
@@ -182,5 +185,41 @@ describe("the server", () => {
   it("tidies a name before showing it to everyone", async () => {
     const { room } = await startWorld("  rj\n\nwith   spaces ", "a".repeat(40), "");
     expect([...room.state.players.values()].map((p) => p.name)).toEqual(["rj with spaces", "a".repeat(24), "wanderer"]);
+  });
+
+  it("brings what's said in a road's Mood onto that road, and only that one", async () => {
+    const said: Record<string, { id: string; sender: string; is_human: boolean; created_at: string; text: string }[]> = {
+      magentoid: [{ id: "a", sender: "justin", is_human: true, created_at: "2026-11-06T17:20:00Z", text: "**live** from the Mood" }],
+      rabbithole: [{ id: "b", sender: "blu", is_human: false, created_at: "2026-11-06T17:21:00Z", text: "nobody's here to hear this" }],
+    };
+    WorldRoom.readTurns = async (slug, after) => {
+      const turns = said[slug] ?? [];
+      const i = turns.findIndex((t) => t.id === after);
+      return after ? turns.slice(i + 1) : turns;
+    };
+    WorldRoom.listenMs = 50;
+    const { room } = await startWorld("justin");
+    await wait(150);
+
+    const lines = () => [...(room.state.talk.get(firstSlice.start.road)?.lines ?? [])].map((l) => `${l.who}: ${l.text}`);
+    expect(lines()).toEqual(["justin: live from the Mood"]);
+    // Nobody's on #rabbithole, so nobody asks it anything.
+    expect(room.state.talk.has("rabbithole")).toBe(false);
+
+    said.magentoid.push({ id: "c", sender: "magent", is_human: false, created_at: "2026-11-06T17:22:00Z", text: "and here's the next" });
+    await wait(150);
+    expect(lines()).toEqual(["justin: live from the Mood", "magent: and here's the next"]);
+  });
+
+  it("keeps the game going when magenta can't be reached", async () => {
+    WorldRoom.readTurns = async () => {
+      throw new Error("magenta is down");
+    };
+    WorldRoom.listenMs = 50;
+    const { room, players } = await startWorld("justin");
+    await wait(150);
+    await ask(room, players[0], "walk", 1);
+    await wait(100);
+    expect(room.state.players.get(players[0].sessionId)!.x).toBeGreaterThan(firstSlice.start.x);
   });
 });
